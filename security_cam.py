@@ -7,10 +7,27 @@ Streams live camera footage to a web interface
 import io
 import time
 import threading
-from flask import Flask, render_template_string, Response
-from picamera2 import Picamera2
-from PIL import Image
+import sys
 import logging
+
+# Try importing required packages and provide helpful error messages
+try:
+    from flask import Flask, render_template_string, Response
+except ImportError:
+    print("❌ Flask not found. Install with: sudo apt install python3-flask")
+    sys.exit(1)
+
+try:
+    from picamera2 import Picamera2
+except ImportError:
+    print("❌ picamera2 not found. Install with: sudo apt install python3-picamera2")
+    sys.exit(1)
+
+try:
+    from PIL import Image
+except ImportError:
+    print("❌ PIL not found. Install with: sudo apt install python3-pil")
+    sys.exit(1)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
