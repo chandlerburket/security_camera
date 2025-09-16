@@ -46,11 +46,9 @@ class CameraStreamer:
         try:
             self.picam2 = Picamera2()
             
-            # Configure camera for streaming with RGB format
+            # Simplified configuration - just main stream for streaming
             config = self.picam2.create_video_configuration(
-                main={"size": (640, 480), "format": "RGB888"},  # RGB format for PIL
-                lores={"size": (320, 240), "format": "RGB888"}, # RGB format for streaming
-                display="lores"
+                main={"size": (320, 240)}  # Single stream, small size for web streaming
             )
             
             self.picam2.configure(config)
@@ -67,13 +65,14 @@ class CameraStreamer:
             return False
     
     def capture_frames(self):
+        """Continuously capture frames from camera"""
         self.running = True
         
         while self.running:
             try:
-                # Capture directly to JPEG bytes
+                # Capture directly to JPEG bytes using main stream
                 buffer = io.BytesIO()
-                self.picam2.capture_file(buffer, format='jpeg', name="lores")
+                self.picam2.capture_file(buffer, format='jpeg')
                 
                 # Update shared frame data
                 with self.condition:
