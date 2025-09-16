@@ -46,10 +46,10 @@ class CameraStreamer:
         try:
             self.picam2 = Picamera2()
             
-            # Configure camera for streaming
+            # Configure camera for streaming with RGB format
             config = self.picam2.create_video_configuration(
-                main={"size": (640, 480)},  # Adjust resolution as needed
-                lores={"size": (320, 240)}, # Lower resolution for faster streaming
+                main={"size": (640, 480), "format": "RGB888"},  # RGB format for PIL
+                lores={"size": (320, 240), "format": "RGB888"}, # RGB format for streaming
                 display="lores"
             )
             
@@ -67,17 +67,13 @@ class CameraStreamer:
             return False
     
     def capture_frames(self):
-        """Continuously capture frames from camera"""
         self.running = True
         
         while self.running:
             try:
-                # Capture frame as PIL Image
-                frame = self.picam2.capture_image("lores")
-                
-                # Convert to JPEG bytes
+                # Capture directly to JPEG bytes
                 buffer = io.BytesIO()
-                frame.save(buffer, format='JPEG', quality=85)
+                self.picam2.capture_file(buffer, format='jpeg', name="lores")
                 
                 # Update shared frame data
                 with self.condition:
@@ -90,6 +86,7 @@ class CameraStreamer:
             except Exception as e:
                 logger.error(f"Error capturing frame: {e}")
                 time.sleep(1)
+    
     
     def get_frame(self):
         """Get the latest frame for streaming"""
