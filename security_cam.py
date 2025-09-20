@@ -203,14 +203,15 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <!-- WiFi Signal Indicator -->
-        <div class="wifi-indicator" id="wifi-indicator">
-            <span id="wifi-display">Loading...</span>
-        </div>
         
         
         <div class="video-container">
             <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
+        </div>
+
+        <!-- WiFi Signal Indicator -->
+        <div class="wifi-indicator" id="wifi-indicator">
+            <span id="wifi-display">Loading...</span>
         </div>
         
         <div class="controls">
