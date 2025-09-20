@@ -200,47 +200,88 @@ HTML_TEMPLATE = """
         <script>
             // Function to update system status
             function updateStatus() {
+                console.log('Updating status...');
                 fetch('/status')
-                    .then(response => response.json())
+                    .then(response => {
+                        console.log('Status response received:', response.status);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
+                        console.log('Status data received:', data);
+                        
                         // Update camera status with styling
                         const cameraStatusEl = document.getElementById('camera-status');
-                        if (data.status === 'running') {
-                            cameraStatusEl.textContent = 'Camera is streaming live';
-                            cameraStatusEl.className = 'status-running';
-                        } else {
-                            cameraStatusEl.textContent = 'Camera stopped';
-                            cameraStatusEl.className = 'status-stopped';
+                        if (cameraStatusEl) {
+                            if (data.status === 'running') {
+                                cameraStatusEl.textContent = 'Camera is streaming live';
+                                cameraStatusEl.className = 'status-running';
+                            } else {
+                                cameraStatusEl.textContent = 'Camera stopped';
+                                cameraStatusEl.className = 'status-stopped';
+                            }
                         }
                         
                         // Update WiFi info
-                        document.getElementById('wifi-ssid').textContent = data.wifi_ssid || 'Unknown';
-                        
-                        const signalEl = document.getElementById('wifi-signal');
-                        let signalText = 'Unknown';
-                        let signalClass = '';
-                        
-                        if (data.wifi_signal_dbm !== null) {
-                            signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
-                            signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
+                        const wifiSsidEl = document.getElementById('wifi-ssid');
+                        if (wifiSsidEl) {
+                            wifiSsidEl.textContent = data.wifi_ssid || 'Unknown';
                         }
                         
-                        signalEl.textContent = signalText;
-                        signalEl.className = signalClass;
+                        const signalEl = document.getElementById('wifi-signal');
+                        if (signalEl) {
+                            let signalText = 'Unknown';
+                            let signalClass = '';
+                            
+                            if (data.wifi_signal_dbm !== null) {
+                                signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
+                                signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
+                            }
+                            
+                            signalEl.textContent = signalText;
+                            signalEl.className = signalClass;
+                        }
                         
                         // Update system info
-                        document.getElementById('ip-address').textContent = data.ip_address || 'Unknown';
-                        document.getElementById('cpu-temp').textContent = data.cpu_temp || 'Unknown';
-                        document.getElementById('uptime').textContent = data.uptime || 'Unknown';
+                        const ipEl = document.getElementById('ip-address');
+                        if (ipEl) {
+                            ipEl.textContent = data.ip_address || 'Unknown';
+                        }
+                        
+                        const tempEl = document.getElementById('cpu-temp');
+                        if (tempEl) {
+                            tempEl.textContent = data.cpu_temp || 'Unknown';
+                        }
+                        
+                        const uptimeEl = document.getElementById('uptime');
+                        if (uptimeEl) {
+                            uptimeEl.textContent = data.uptime || 'Unknown';
+                        }
+                        
+                        console.log('Status updated successfully');
                     })
                     .catch(error => {
                         console.error('Error fetching status:', error);
+                        // Show error in the status elements
+                        const elements = ['camera-status', 'wifi-ssid', 'wifi-signal', 'ip-address', 'cpu-temp', 'uptime'];
+                        elements.forEach(id => {
+                            const el = document.getElementById(id);
+                            if (el && el.textContent === 'Loading...') {
+                                el.textContent = 'Error loading';
+                            }
+                        });
                     });
             }
             
-            // Update status immediately and then every 10 seconds
-            updateStatus();
-            setInterval(updateStatus, 10000);
+            // Wait for page to load before updating status
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('Page loaded, starting status updates');
+                // Update status immediately and then every 10 seconds
+                updateStatus();
+                setInterval(updateStatus, 10000);
+            });
             
             // Auto-refresh the page every 5 minutes to prevent connection issues
             setTimeout(function() {
@@ -359,6 +400,24 @@ def get_system_info():
         info['uptime'] = 'Unknown'
     
     return info
+
+@app.route('/test-status')
+def test_status():
+    """Test endpoint to debug status information"""
+    try:
+        system_info = get_system_info()
+        return f"""
+        <h2>Status Debug Information</h2>
+        <pre>
+System Info: {system_info}
+
+Camera Status: {'running' if streamer.running else 'stopped'}
+Camera Initialized: {streamer.picam2 is not None}
+        </pre>
+        <a href="/">Back to main page</a>
+        """
+    except Exception as e:
+        return f"Error getting status: {str(e)}"
 
 @app.route('/status')
 def status():
