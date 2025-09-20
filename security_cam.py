@@ -123,7 +123,21 @@ HTML_TEMPLATE = """
             background-color: #f0f0f0;
             text-align: center;
         }
+        .wifi-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            border: 2px solid #ddd;
+            z-index: 100;
+        }
         .container {
+            position: relative;
             max-width: 800px;
             margin: 0 auto;
             background-color: white;
@@ -181,6 +195,11 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
+        <!-- WiFi Signal Indicator -->
+        <div class="wifi-indicator" id="wifi-indicator">
+            📶 <span id="wifi-display">Loading...</span>
+        </div>
+        
         <h1>🎥 Raspberry Pi Camera Stream</h1>
         
         <div>
@@ -203,7 +222,25 @@ HTML_TEMPLATE = """
                 console.log('Updating status...');
                 fetch('/status')
                     .then(response => {
-                        console.log('Status response received:', response.status);
+                        // Update WiFi info in details section
+                        const wifiSsidEl = document.getElementById('wifi-ssid');
+                        if (wifiSsidEl) {
+                            wifiSsidEl.textContent = data.wifi_ssid || 'Unknown';
+                        }
+                        
+                        const signalEl = document.getElementById('wifi-signal');
+                        if (signalEl) {
+                            let signalText = 'Unknown';
+                            let signalClass = '';
+                            
+                            if (data.wifi_signal_dbm !== null) {
+                                signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
+                                signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
+                            }
+                            
+                            signalEl.textContent = signalText;
+                            signalEl.className = signalClass;
+                        }console.log('Status response received:', response.status);
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
@@ -224,24 +261,40 @@ HTML_TEMPLATE = """
                             }
                         }
                         
-                        // Update WiFi info
-                        const wifiSsidEl = document.getElementById('wifi-ssid');
-                        if (wifiSsidEl) {
-                            wifiSsidEl.textContent = data.wifi_ssid || 'Unknown';
-                        }
+                        // Update WiFi indicator at the top
+                        const wifiDisplayEl = document.getElementById('wifi-display');
+                        const wifiIndicatorEl = document.getElementById('wifi-indicator');
                         
-                        const signalEl = document.getElementById('wifi-signal');
-                        if (signalEl) {
-                            let signalText = 'Unknown';
-                            let signalClass = '';
-                            
+                        if (wifiDisplayEl && wifiIndicatorEl) {
                             if (data.wifi_signal_dbm !== null) {
-                                signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
-                                signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
+                                wifiDisplayEl.textContent = `${data.wifi_signal_quality} ${data.wifi_signal_percent}%`;
+                                
+                                // Update indicator border color based on signal quality
+                                const quality = data.wifi_signal_quality.toLowerCase();
+                                if (quality === 'excellent') {
+                                    wifiIndicatorEl.style.borderColor = '#28a745';
+                                    wifiIndicatorEl.style.color = '#28a745';
+                                } else if (quality === 'good') {
+                                    wifiIndicatorEl.style.borderColor = '#17a2b8';
+                                    wifiIndicatorEl.style.color = '#17a2b8';
+                                } else if (quality === 'fair') {
+                                    wifiIndicatorEl.style.borderColor = '#ffc107';
+                                    wifiIndicatorEl.style.color = '#e67e00';
+                                } else if (quality === 'weak') {
+                                    wifiIndicatorEl.style.borderColor = '#fd7e14';
+                                    wifiIndicatorEl.style.color = '#fd7e14';
+                                } else if (quality === 'poor') {
+                                    wifiIndicatorEl.style.borderColor = '#dc3545';
+                                    wifiIndicatorEl.style.color = '#dc3545';
+                                } else {
+                                    wifiIndicatorEl.style.borderColor = '#6c757d';
+                                    wifiIndicatorEl.style.color = '#6c757d';
+                                }
+                            } else {
+                                wifiDisplayEl.textContent = 'No WiFi';
+                                wifiIndicatorEl.style.borderColor = '#6c757d';
+                                wifiIndicatorEl.style.color = '#6c757d';
                             }
-                            
-                            signalEl.textContent = signalText;
-                            signalEl.className = signalClass;
                         }
                         
                         // Update system info
