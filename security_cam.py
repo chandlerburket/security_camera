@@ -9,6 +9,9 @@ import time
 import threading
 import sys
 import logging
+import subprocess
+import socket
+import re
 
 # Try importing required packages and provide helpful error messages
 try:
@@ -140,11 +143,25 @@ HTML_TEMPLATE = """
         }
         .info {
             margin-top: 20px;
-            padding: 10px;
+            padding: 15px;
             background-color: #e7f3ff;
             border-radius: 5px;
             color: #333;
+            text-align: left;
         }
+        .info p {
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .signal-excellent { color: #28a745; font-weight: bold; }
+        .signal-good { color: #17a2b8; font-weight: bold; }
+        .signal-fair { color: #ffc107; font-weight: bold; }
+        .signal-weak { color: #fd7e14; font-weight: bold; }
+        .signal-poor { color: #dc3545; font-weight: bold; }
+        .status-running { color: #28a745; font-weight: bold; }
+        .status-stopped { color: #dc3545; font-weight: bold; }
         .controls {
             margin-top: 15px;
         }
@@ -181,6 +198,50 @@ HTML_TEMPLATE = """
         </div>
         
         <script>
+            // Function to update system status
+            function updateStatus() {
+                fetch('/status')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update camera status with styling
+                        const cameraStatusEl = document.getElementById('camera-status');
+                        if (data.status === 'running') {
+                            cameraStatusEl.textContent = 'Camera is streaming live';
+                            cameraStatusEl.className = 'status-running';
+                        } else {
+                            cameraStatusEl.textContent = 'Camera stopped';
+                            cameraStatusEl.className = 'status-stopped';
+                        }
+                        
+                        // Update WiFi info
+                        document.getElementById('wifi-ssid').textContent = data.wifi_ssid || 'Unknown';
+                        
+                        const signalEl = document.getElementById('wifi-signal');
+                        let signalText = 'Unknown';
+                        let signalClass = '';
+                        
+                        if (data.wifi_signal_dbm !== null) {
+                            signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
+                            signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
+                        }
+                        
+                        signalEl.textContent = signalText;
+                        signalEl.className = signalClass;
+                        
+                        // Update system info
+                        document.getElementById('ip-address').textContent = data.ip_address || 'Unknown';
+                        document.getElementById('cpu-temp').textContent = data.cpu_temp || 'Unknown';
+                        document.getElementById('uptime').textContent = data.uptime || 'Unknown';
+                    })
+                    .catch(error => {
+                        console.error('Error fetching status:', error);
+                    });
+            }
+            
+            // Update status immediately and then every 10 seconds
+            updateStatus();
+            setInterval(updateStatus, 10000);
+            
             // Auto-refresh the page every 5 minutes to prevent connection issues
             setTimeout(function() {
                 location.reload();
@@ -218,11 +279,100 @@ def video_feed():
 
 @app.route('/status')
 def status():
-    """API endpoint for camera status"""
+    """API endpoint for camera and system status"""
+    system_info = get_system_info()
     return {
         'status': 'running' if streamer.running else 'stopped',
-        'camera_initialized': streamer.picam2 is not None
+        'camera_initialized': streamer.picam2 is not None,
+        'wifi_signal_dbm': system_info['wifi_signal_dbm'],
+        'wifi_signal_percent': system_info['wifi_signal_percent'],
+        'wifi_signal_quality': system_info['wifi_signal_quality'],
+        'wifi_ssid': system_info['wifi_ssid'],
+        'ip_address': system_info['ip_address'],
+        'cpu_temp': system_info['cpu_temp'],
+        'uptime': system_info['uptime']
     }
+    """Get system information including WiFi signal strength"""
+    info = {}
+    
+    try:
+        # Get WiFi signal strength
+        result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # Parse iwconfig output for signal strength
+            lines = result.stdout
+            signal_match = re.search(r'Signal level=(-?\d+) dBm', lines)
+            if signal_match:
+                signal_dbm = int(signal_match.group(1))
+                info['wifi_signal_dbm'] = signal_dbm
+                
+                # Convert dBm to percentage (rough approximation)
+                if signal_dbm >= -30:
+                    info['wifi_signal_percent'] = 100
+                elif signal_dbm >= -67:
+                    info['wifi_signal_percent'] = 70
+                elif signal_dbm >= -70:
+                    info['wifi_signal_percent'] = 50
+                elif signal_dbm >= -80:
+                    info['wifi_signal_percent'] = 30
+                else:
+                    info['wifi_signal_percent'] = 10
+                    
+                info['wifi_signal_quality'] = 'Excellent' if signal_dbm >= -30 else \
+                                            'Good' if signal_dbm >= -67 else \
+                                            'Fair' if signal_dbm >= -70 else \
+                                            'Weak' if signal_dbm >= -80 else 'Poor'
+            else:
+                info['wifi_signal_dbm'] = None
+                info['wifi_signal_percent'] = None
+                info['wifi_signal_quality'] = 'Unknown'
+                
+            # Get WiFi network name (SSID)
+            ssid_match = re.search(r'ESSID:"([^"]*)"', lines)
+            if ssid_match:
+                info['wifi_ssid'] = ssid_match.group(1)
+            else:
+                info['wifi_ssid'] = 'Not connected'
+        else:
+            info['wifi_signal_dbm'] = None
+            info['wifi_signal_percent'] = None
+            info['wifi_signal_quality'] = 'No WiFi'
+            info['wifi_ssid'] = 'No WiFi'
+    except Exception as e:
+        logger.warning(f"Could not get WiFi info: {e}")
+        info['wifi_signal_dbm'] = None
+        info['wifi_signal_percent'] = None
+        info['wifi_signal_quality'] = 'Error'
+        info['wifi_ssid'] = 'Error'
+    
+    try:
+        # Get IP address
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        info['ip_address'] = s.getsockname()[0]
+        s.close()
+    except Exception:
+        info['ip_address'] = 'Unknown'
+    
+    try:
+        # Get CPU temperature
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            temp = int(f.read().strip()) / 1000.0
+            info['cpu_temp'] = f"{temp:.1f}°C"
+    except Exception:
+        info['cpu_temp'] = 'Unknown'
+    
+    try:
+        # Get uptime
+        with open('/proc/uptime', 'r') as f:
+            uptime_seconds = float(f.read().split()[0])
+            hours = int(uptime_seconds // 3600)
+            minutes = int((uptime_seconds % 3600) // 60)
+            info['uptime'] = f"{hours}h {minutes}m"
+    except Exception:
+        info['uptime'] = 'Unknown'
+    
+    return info
 
 def main():
     """Main function to start the camera server"""
