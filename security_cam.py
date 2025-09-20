@@ -49,9 +49,9 @@ class CameraStreamer:
         try:
             self.picam2 = Picamera2()
             
-            # Simplified configuration - just main stream for streaming
+            # Simplified configuration with higher resolution for larger display
             config = self.picam2.create_video_configuration(
-                main={"size": (320, 240)}  # Single stream, small size for web streaming
+                main={"size": (640, 480)}  # Increased resolution for larger display
             )
             
             self.picam2.configure(config)
@@ -138,7 +138,7 @@ HTML_TEMPLATE = """
         }
         .container {
             position: relative;
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             background-color: black;
             padding: 20px;
@@ -152,8 +152,16 @@ HTML_TEMPLATE = """
         .camera-stream {
             border: 2px solid #ddd;
             border-radius: 5px;
-            max-width: 100%;
+            width: 100%;
+            max-width: 1000px;
             height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .video-container {
+            position: relative;
+            margin: 20px 0;
+            text-align: center;
         }
         .info {
             margin-top: 20px;
@@ -201,7 +209,7 @@ HTML_TEMPLATE = """
         </div>
         
         
-        <div>
+        <div class="video-container">
             <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
         </div>
         
