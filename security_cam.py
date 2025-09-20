@@ -277,6 +277,89 @@ def video_feed():
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
+def get_system_info():
+    """Get system information including WiFi signal strength"""
+    info = {}
+    
+    try:
+        # Get WiFi signal strength
+        result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # Parse iwconfig output for signal strength
+            lines = result.stdout
+            signal_match = re.search(r'Signal level=(-?\d+) dBm', lines)
+            if signal_match:
+                signal_dbm = int(signal_match.group(1))
+                info['wifi_signal_dbm'] = signal_dbm
+                
+                # Convert dBm to percentage (rough approximation)
+                if signal_dbm >= -30:
+                    info['wifi_signal_percent'] = 100
+                elif signal_dbm >= -67:
+                    info['wifi_signal_percent'] = 70
+                elif signal_dbm >= -70:
+                    info['wifi_signal_percent'] = 50
+                elif signal_dbm >= -80:
+                    info['wifi_signal_percent'] = 30
+                else:
+                    info['wifi_signal_percent'] = 10
+                    
+                info['wifi_signal_quality'] = 'Excellent' if signal_dbm >= -30 else \
+                                            'Good' if signal_dbm >= -67 else \
+                                            'Fair' if signal_dbm >= -70 else \
+                                            'Weak' if signal_dbm >= -80 else 'Poor'
+            else:
+                info['wifi_signal_dbm'] = None
+                info['wifi_signal_percent'] = None
+                info['wifi_signal_quality'] = 'Unknown'
+                
+            # Get WiFi network name (SSID)
+            ssid_match = re.search(r'ESSID:"([^"]*)"', lines)
+            if ssid_match:
+                info['wifi_ssid'] = ssid_match.group(1)
+            else:
+                info['wifi_ssid'] = 'Not connected'
+        else:
+            info['wifi_signal_dbm'] = None
+            info['wifi_signal_percent'] = None
+            info['wifi_signal_quality'] = 'No WiFi'
+            info['wifi_ssid'] = 'No WiFi'
+    except Exception as e:
+        logger.warning(f"Could not get WiFi info: {e}")
+        info['wifi_signal_dbm'] = None
+        info['wifi_signal_percent'] = None
+        info['wifi_signal_quality'] = 'Error'
+        info['wifi_ssid'] = 'Error'
+    
+    try:
+        # Get IP address
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        info['ip_address'] = s.getsockname()[0]
+        s.close()
+    except Exception:
+        info['ip_address'] = 'Unknown'
+    
+    try:
+        # Get CPU temperature
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            temp = int(f.read().strip()) / 1000.0
+            info['cpu_temp'] = f"{temp:.1f}°C"
+    except Exception:
+        info['cpu_temp'] = 'Unknown'
+    
+    try:
+        # Get uptime
+        with open('/proc/uptime', 'r') as f:
+            uptime_seconds = float(f.read().split()[0])
+            hours = int(uptime_seconds // 3600)
+            minutes = int((uptime_seconds % 3600) // 60)
+            info['uptime'] = f"{hours}h {minutes}m"
+    except Exception:
+        info['uptime'] = 'Unknown'
+    
+    return info
+
 @app.route('/status')
 def status():
     """API endpoint for camera and system status"""
