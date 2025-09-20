@@ -132,9 +132,59 @@ HTML_TEMPLATE = """
             border-radius: 20px;
             font-size: 14px;
             font-weight: bold;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            border: 2px solid #ddd;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 3px solid #ddd;
             z-index: 100;
+            min-width: 120px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .wifi-bars {
+            display: inline-flex;
+            align-items: flex-end;
+            margin-right: 8px;
+            height: 16px;
+        }
+        .wifi-bar {
+            width: 3px;
+            margin-right: 2px;
+            background-color: #ddd;
+            border-radius: 1px;
+            transition: background-color 0.3s ease;
+        }
+        .wifi-bar:nth-child(1) { height: 4px; }
+        .wifi-bar:nth-child(2) { height: 8px; }
+        .wifi-bar:nth-child(3) { height: 12px; }
+        .wifi-bar:nth-child(4) { height: 16px; }
+        .wifi-excellent { 
+            border-color: #28a745; 
+            color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+        .wifi-good { 
+            border-color: #17a2b8; 
+            color: #17a2b8;
+            background: rgba(23, 162, 184, 0.1);
+        }
+        .wifi-fair { 
+            border-color: #ffc107; 
+            color: #e67e00;
+            background: rgba(255, 193, 7, 0.1);
+        }
+        .wifi-weak { 
+            border-color: #fd7e14; 
+            color: #fd7e14;
+            background: rgba(253, 126, 20, 0.1);
+        }
+        .wifi-poor { 
+            border-color: #dc3545; 
+            color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+        }
+        .wifi-unknown { 
+            border-color: #6c757d; 
+            color: #6c757d;
+            background: rgba(108, 117, 125, 0.1);
         }
         .container {
             position: relative;
@@ -266,37 +316,62 @@ HTML_TEMPLATE = """
                         // Update WiFi indicator at the top
                         const wifiDisplayEl = document.getElementById('wifi-display');
                         const wifiIndicatorEl = document.getElementById('wifi-indicator');
+                        const wifiBars = document.querySelectorAll('.wifi-bar');
                         
                         if (wifiDisplayEl && wifiIndicatorEl) {
+                            let qualityClass = 'wifi-unknown';
+                            let barsToFill = 0;
+                            
                             if (data.wifi_signal_dbm !== null) {
+                                const quality = data.wifi_signal_quality.toLowerCase();
                                 wifiDisplayEl.textContent = `${data.wifi_signal_quality} ${data.wifi_signal_percent}%`;
                                 
-                                // Update indicator border color based on signal quality
-                                const quality = data.wifi_signal_quality.toLowerCase();
-                                if (quality === 'excellent') {
-                                    wifiIndicatorEl.style.borderColor = '#28a745';
-                                    wifiIndicatorEl.style.color = '#28a745';
-                                } else if (quality === 'good') {
-                                    wifiIndicatorEl.style.borderColor = '#17a2b8';
-                                    wifiIndicatorEl.style.color = '#17a2b8';
-                                } else if (quality === 'fair') {
-                                    wifiIndicatorEl.style.borderColor = '#ffc107';
-                                    wifiIndicatorEl.style.color = '#e67e00';
-                                } else if (quality === 'weak') {
-                                    wifiIndicatorEl.style.borderColor = '#fd7e14';
-                                    wifiIndicatorEl.style.color = '#fd7e14';
-                                } else if (quality === 'poor') {
-                                    wifiIndicatorEl.style.borderColor = '#dc3545';
-                                    wifiIndicatorEl.style.color = '#dc3545';
-                                } else {
-                                    wifiIndicatorEl.style.borderColor = '#6c757d';
-                                    wifiIndicatorEl.style.color = '#6c757d';
+                                // Determine CSS class and number of bars to fill
+                                switch(quality) {
+                                    case 'excellent':
+                                        qualityClass = 'wifi-excellent';
+                                        barsToFill = 4;
+                                        break;
+                                    case 'good':
+                                        qualityClass = 'wifi-good';
+                                        barsToFill = 3;
+                                        break;
+                                    case 'fair':
+                                        qualityClass = 'wifi-fair';
+                                        barsToFill = 2;
+                                        break;
+                                    case 'weak':
+                                        qualityClass = 'wifi-weak';
+                                        barsToFill = 1;
+                                        break;
+                                    case 'poor':
+                                        qualityClass = 'wifi-poor';
+                                        barsToFill = 1;
+                                        break;
+                                    default:
+                                        qualityClass = 'wifi-unknown';
+                                        barsToFill = 0;
                                 }
                             } else {
                                 wifiDisplayEl.textContent = 'No WiFi';
-                                wifiIndicatorEl.style.borderColor = '#6c757d';
-                                wifiIndicatorEl.style.color = '#6c757d';
+                                qualityClass = 'wifi-unknown';
+                                barsToFill = 0;
                             }
+                            
+                            // Update indicator class
+                            wifiIndicatorEl.className = `wifi-indicator ${qualityClass}`;
+                            
+                            // Update signal bars
+                            wifiBars.forEach((bar, index) => {
+                                if (index < barsToFill) {
+                                    // Fill the bar with the appropriate color
+                                    const color = getComputedStyle(wifiIndicatorEl).color;
+                                    bar.style.backgroundColor = color;
+                                } else {
+                                    // Leave unfilled bars gray
+                                    bar.style.backgroundColor = '#ddd';
+                                }
+                            });
                         }
                         
                         // Update system info
