@@ -120,14 +120,14 @@ HTML_TEMPLATE = """
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
-            background-color: #f0f0f0;
+            background-color: #000000;
             text-align: center;
         }
         .wifi-indicator {
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(0, 0, 0, 0.9);
             padding: 8px 12px;
             border-radius: 20px;
             font-size: 14px;
@@ -140,7 +140,7 @@ HTML_TEMPLATE = """
             position: relative;
             max-width: 800px;
             margin: 0 auto;
-            background-color: white;
+            background-color: black;
             padding: 20px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -183,7 +183,7 @@ HTML_TEMPLATE = """
             padding: 10px 20px;
             margin: 5px;
             background-color: #007bff;
-            color: white;
+            color: black;
             border: none;
             border-radius: 5px;
             cursor: pointer;
@@ -197,23 +197,16 @@ HTML_TEMPLATE = """
     <div class="container">
         <!-- WiFi Signal Indicator -->
         <div class="wifi-indicator" id="wifi-indicator">
-            📶 <span id="wifi-display">Loading...</span>
+            <span id="wifi-display">Loading...</span>
         </div>
         
-        <h1>🎥 Raspberry Pi Camera Stream</h1>
         
         <div>
             <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
         </div>
         
-        <div class="info">
-            <p><strong>Status:</strong> Camera is streaming live</p>
-            <p><strong>Resolution:</strong> 640x480 (streaming at 320x240)</p>
-            <p><strong>Server:</strong> Running on Raspberry Pi</p>
-        </div>
-        
         <div class="controls">
-            <button onclick="location.reload()">🔄 Refresh Stream</button>
+            <button onclick="location.reload()">Refresh Stream</button>
         </div>
         
         <script>
