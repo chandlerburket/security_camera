@@ -249,7 +249,7 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="info">
-            <p><strong>Status:</strong> <span id="camera-status">Camera is streaming live</span></p>
+            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Status:</strong> <span id="camera-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #4CAF50; display: inline-block;"></span></p>
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: center;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
@@ -270,15 +270,13 @@ HTML_TEMPLATE = """
                     .then(data => {
                         console.log('Status data received:', data);
                         
-                        // Update camera status with styling
+                        // Update camera status indicator
                         const cameraStatusEl = document.getElementById('camera-status');
                         if (cameraStatusEl) {
                             if (data.status === 'running') {
-                                cameraStatusEl.textContent = 'Camera is streaming live';
-                                cameraStatusEl.className = 'status-running';
+                                cameraStatusEl.style.backgroundColor = '#4CAF50'; // Green for running
                             } else {
-                                cameraStatusEl.textContent = 'Camera stopped';
-                                cameraStatusEl.className = 'status-stopped';
+                                cameraStatusEl.style.backgroundColor = '#f44336'; // Red for stopped
                             }
                         }
                         
