@@ -117,6 +117,7 @@ HTML_TEMPLATE = """
     <style>
         body {
             font-family: Arial, sans-serif;
+            color: slategray; 
             margin: 0;
             padding: 20px;
             background-color: #000000;
@@ -280,31 +281,20 @@ HTML_TEMPLATE = """
             <div class="video-container">
                 <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
             </div>
-
-            <!-- WiFi Signal Indicator (below camera, right side) -->
-            <div class="wifi-indicator wifi-unknown" id="wifi-indicator">
-                <div class="wifi-bars" id="wifi-bars">
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                </div>
-                <span id="wifi-display">Loading...</span>
-            </div>
         </div>
 
         <div class="info">
             <p><strong>Status:</strong> <span id="camera-status">Camera is streaming live</span></p>
             <p><strong>Resolution:</strong> 640x480</p>
             <p><strong>WiFi Network:</strong> <span id="wifi-ssid">Loading...</span></p>
-            <p><strong>WiFi Signal:</strong> <span id="wifi-signal">Loading...</span></p>
-            <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
+            <p><strong>WiFi Signal:</strong> <div class="wifi-bars" id="wifi-bars">
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                </div><span id="wifi-signal">Loading...</span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
-        </div>
-
-        <div class="controls">
-            <button onclick="location.reload()">🔄 Refresh Stream</button>
         </div>
         
         <script>
