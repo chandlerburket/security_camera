@@ -250,7 +250,7 @@ HTML_TEMPLATE = """
 
         <div class="info">
             <p><strong>Status:</strong> <span id="camera-status">Camera is streaming live</span></p>
-            <p style="display: flex; justify-content: space-between; align-items: center;"><span><strong>WiFi Signal:</strong> <span id="wifi-signal">Loading...</span></span> <span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: center; margin-left: 8px;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span></p>
+            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: center;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
         </div>
