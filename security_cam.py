@@ -397,16 +397,14 @@ HTML_TEMPLATE = """
             // Function to update date and time overlay
             function updateDateTime() {
                 const now = new Date();
-                const options = {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false
-                };
-                const dateTimeString = now.toLocaleDateString('en-CA', options).replace(',', '') + ' ' + now.toLocaleTimeString('en-GB');
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+
+                const dateTimeString = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
                 const overlay = document.getElementById('datetime-overlay');
                 if (overlay) {
                     overlay.textContent = dateTimeString;
