@@ -253,15 +253,13 @@ HTML_TEMPLATE = """
             <p><strong>Resolution:</strong> 640x480</p>
             <p><strong>WiFi Network:</strong> <span id="wifi-ssid">Loading...</span></p>
             <p><strong>WiFi Signal:</strong> 
-                <span style="display: inline-flex; align-items: center;">
-                    <div class="wifi-bars" id="wifi-bars" style="display: inline-flex; margin-right: 8px;">
-                        <div class="wifi-bar"></div>
-                        <div class="wifi-bar"></div>
-                        <div class="wifi-bar"></div>
-                        <div class="wifi-bar"></div>
-                    </div>
-                    <span id="wifi-signal">Loading...</span>
-                </span>
+                <div class="wifi-bars" id="wifi-bars" style="display: inline-flex; margin-right: 8px;">
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                </div>
+                <span id="wifi-signal">Loading...</span>
             </p>
             <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
