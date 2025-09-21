@@ -252,16 +252,7 @@ HTML_TEMPLATE = """
             <p><strong>Status:</strong> <span id="camera-status">Camera is streaming live</span></p>
             <p><strong>Resolution:</strong> 640x480</p>
             <p><strong>WiFi Network:</strong> <span id="wifi-ssid">Loading...</span></p>
-            <p><strong>WiFi Signal:</strong> 
-                <div class="wifi-bars" id="wifi-bars" style="display: inline-flex; margin-right: 8px;">
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                </div>
-                <span id="wifi-signal">Loading...</span>
-            </p>
-            <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
+            <p><strong>WiFi Signal:</strong> <span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: center; margin: 0 8px 0 8px; vertical-align: middle;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
         </div>
