@@ -203,9 +203,9 @@ HTML_TEMPLATE = """
         .info {
             margin-top: 20px;
             padding: 15px;
-            background-color: #e7f3ff;
+            background-color: #000000;
             border-radius: 5px;
-            color: #333;
+            color: #slategray;
             text-align: left;
         }
         .info p {
@@ -253,13 +253,15 @@ HTML_TEMPLATE = """
             <p><strong>Resolution:</strong> 640x480</p>
             <p><strong>WiFi Network:</strong> <span id="wifi-ssid">Loading...</span></p>
             <p><strong>WiFi Signal:</strong> 
-                <div class="wifi-bars" id="wifi-bars" style="display: inline-flex;">
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                    <div class="wifi-bar"></div>
-                </div>
-                <span id="wifi-signal">Loading...</span>
+                <span style="display: inline-flex; align-items: center;">
+                    <div class="wifi-bars" id="wifi-bars" style="display: inline-flex; margin-right: 8px;">
+                        <div class="wifi-bar"></div>
+                        <div class="wifi-bar"></div>
+                        <div class="wifi-bar"></div>
+                        <div class="wifi-bar"></div>
+                    </div>
+                    <span id="wifi-signal">Loading...</span>
+                </span>
             </p>
             <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
