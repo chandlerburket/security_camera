@@ -125,7 +125,7 @@ HTML_TEMPLATE = """
         }
         .wifi-bars {
             display: inline-flex;
-            align-items: flex-end;
+            align-items: baseline;
             margin-right: 8px;
             height: 16px;
         }
