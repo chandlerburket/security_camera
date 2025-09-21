@@ -124,9 +124,9 @@ HTML_TEMPLATE = """
             text-align: center;
         }
         .wifi-indicator {
-            position: absolute;
+            position: relative;
             top: 10px;
-            right: 10px;
+            margin-left: 740px;
             background: rgba(0, 0, 0, 0.9);
             padding: 8px 12px;
             border-radius: 20px;
@@ -234,21 +234,6 @@ HTML_TEMPLATE = """
         .signal-poor { color: #dc3545; font-weight: bold; }
         .status-running { color: #28a745; font-weight: bold; }
         .status-stopped { color: #dc3545; font-weight: bold; }
-        .controls {
-            margin-top: 15px;
-        }
-        button {
-            padding: 10px 20px;
-            margin: 5px;
-            background-color: #007bff;
-            color: black;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
     </style>
 </head>
 <body>
@@ -262,10 +247,6 @@ HTML_TEMPLATE = """
         <!-- WiFi Signal Indicator -->
         <div class="wifi-indicator" id="wifi-indicator">
             <span id="wifi-display">Loading...</span>
-        </div>
-        
-        <div class="controls">
-            <button onclick="location.reload()">Refresh Stream</button>
         </div>
         
         <script>
