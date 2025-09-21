@@ -180,7 +180,7 @@ HTML_TEMPLATE = """
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         h1 {
-            color: #333;
+            color: #ffffff;
             margin-bottom: 20px;
         }
         .camera-stream {
@@ -199,41 +199,6 @@ HTML_TEMPLATE = """
         }
         .video-section {
             margin-bottom: 20px;
-        }
-        .wifi-indicator {
-            position: relative;
-            display: inline-block;
-            float: right;
-            margin-top: 10px;
-            margin-right: 50px;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: bold;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            border: 3px solid #ddd;
-            min-width: 120px;
-            text-align: center;
-            transition: all 0.3s ease;
-            clear: both;
-        }
-            position: relative;
-            display: inline-block;
-            float: right;
-            margin-top: 10px;
-            margin-right: 50px;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: bold;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            border: 3px solid #ddd;
-            min-width: 120px;
-            text-align: center;
-            transition: all 0.3s ease;
-            clear: both;
         }
         .info {
             margin-top: 20px;
@@ -287,12 +252,16 @@ HTML_TEMPLATE = """
             <p><strong>Status:</strong> <span id="camera-status">Camera is streaming live</span></p>
             <p><strong>Resolution:</strong> 640x480</p>
             <p><strong>WiFi Network:</strong> <span id="wifi-ssid">Loading...</span></p>
-            <p><strong>WiFi Signal:</strong> <div class="wifi-bars" id="wifi-bars">
+            <p><strong>WiFi Signal:</strong> 
+                <div class="wifi-bars" id="wifi-bars" style="display: inline-flex;">
                     <div class="wifi-bar"></div>
                     <div class="wifi-bar"></div>
                     <div class="wifi-bar"></div>
                     <div class="wifi-bar"></div>
-                </div><span id="wifi-signal">Loading...</span></p>
+                </div>
+                <span id="wifi-signal">Loading...</span>
+            </p>
+            <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
         </div>
@@ -324,66 +293,59 @@ HTML_TEMPLATE = """
                             }
                         }
                         
-                        // Update WiFi indicator with bars
-                        const wifiDisplayEl = document.getElementById('wifi-display');
-                        const wifiIndicatorEl = document.getElementById('wifi-indicator');
-                        const wifiBars = document.querySelectorAll('.wifi-bar');
+                        // Update WiFi bars in info section
+                        const wifiBars = document.querySelectorAll('#wifi-bars .wifi-bar');
+                        const wifiBarsContainer = document.getElementById('wifi-bars');
                         
-                        if (wifiDisplayEl && wifiIndicatorEl) {
-                            let qualityClass = 'wifi-unknown';
-                            let barsToFill = 0;
+                        let barsToFill = 0;
+                        let qualityClass = 'wifi-unknown';
+                        
+                        if (data.wifi_signal_dbm !== null) {
+                            const quality = data.wifi_signal_quality.toLowerCase();
                             
-                            if (data.wifi_signal_dbm !== null) {
-                                const quality = data.wifi_signal_quality.toLowerCase();
-                                wifiDisplayEl.textContent = `${data.wifi_signal_quality} ${data.wifi_signal_percent}%`;
-                                
-                                // Determine CSS class and number of bars to fill
-                                switch(quality) {
-                                    case 'excellent':
-                                        qualityClass = 'wifi-excellent';
-                                        barsToFill = 4;
-                                        break;
-                                    case 'good':
-                                        qualityClass = 'wifi-good';
-                                        barsToFill = 3;
-                                        break;
-                                    case 'fair':
-                                        qualityClass = 'wifi-fair';
-                                        barsToFill = 2;
-                                        break;
-                                    case 'weak':
-                                        qualityClass = 'wifi-weak';
-                                        barsToFill = 1;
-                                        break;
-                                    case 'poor':
-                                        qualityClass = 'wifi-poor';
-                                        barsToFill = 1;
-                                        break;
-                                    default:
-                                        qualityClass = 'wifi-unknown';
-                                        barsToFill = 0;
-                                }
-                            } else {
-                                wifiDisplayEl.textContent = 'No WiFi';
-                                qualityClass = 'wifi-unknown';
-                                barsToFill = 0;
+                            // Determine number of bars to fill
+                            switch(quality) {
+                                case 'excellent':
+                                    qualityClass = 'wifi-excellent';
+                                    barsToFill = 4;
+                                    break;
+                                case 'good':
+                                    qualityClass = 'wifi-good';
+                                    barsToFill = 3;
+                                    break;
+                                case 'fair':
+                                    qualityClass = 'wifi-fair';
+                                    barsToFill = 2;
+                                    break;
+                                case 'weak':
+                                    qualityClass = 'wifi-weak';
+                                    barsToFill = 1;
+                                    break;
+                                case 'poor':
+                                    qualityClass = 'wifi-poor';
+                                    barsToFill = 1;
+                                    break;
+                                default:
+                                    qualityClass = 'wifi-unknown';
+                                    barsToFill = 0;
                             }
-                            
-                            // Update indicator class
-                            wifiIndicatorEl.className = `wifi-indicator ${qualityClass}`;
-                            
-                            // Update signal bars
-                            wifiBars.forEach((bar, index) => {
-                                if (index < barsToFill) {
-                                    // Fill the bar with the appropriate color
-                                    const color = getComputedStyle(wifiIndicatorEl).color;
-                                    bar.style.backgroundColor = color;
-                                } else {
-                                    // Leave unfilled bars gray
-                                    bar.style.backgroundColor = '#ddd';
-                                }
-                            });
                         }
+                        
+                        // Apply quality class to bars container
+                        wifiBarsContainer.className = `wifi-bars ${qualityClass}`;
+                        
+                        // Update signal bars
+                        wifiBars.forEach((bar, index) => {
+                            if (index < barsToFill) {
+                                // Get color from the container's computed style
+                                const containerStyle = getComputedStyle(wifiBarsContainer);
+                                const color = containerStyle.color;
+                                bar.style.backgroundColor = color;
+                            } else {
+                                // Leave unfilled bars gray
+                                bar.style.backgroundColor = '#ddd';
+                            }
+                        });
                         
                         // Update WiFi info in details section
                         const wifiSsidEl = document.getElementById('wifi-ssid');
