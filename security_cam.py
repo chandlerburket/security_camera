@@ -243,8 +243,9 @@ HTML_TEMPLATE = """
         
         
         <div class="video-section">
-            <div class="video-container">
+            <div class="video-container" style="position: relative;">
                 <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
+                <div id="datetime-overlay" style="position: absolute; bottom: 10px; right: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: monospace;"></div>
             </div>
         </div>
 
@@ -393,6 +394,29 @@ HTML_TEMPLATE = """
                 setInterval(updateStatus, 10000);
             });
             
+            // Function to update date and time overlay
+            function updateDateTime() {
+                const now = new Date();
+                const options = {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                };
+                const dateTimeString = now.toLocaleDateString('en-CA', options).replace(',', '') + ' ' + now.toLocaleTimeString('en-GB');
+                const overlay = document.getElementById('datetime-overlay');
+                if (overlay) {
+                    overlay.textContent = dateTimeString;
+                }
+            }
+
+            // Update datetime immediately and then every second
+            updateDateTime();
+            setInterval(updateDateTime, 1000);
+
             // Auto-refresh the page every 5 minutes to prevent connection issues
             setTimeout(function() {
                 location.reload();
