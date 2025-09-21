@@ -89,7 +89,6 @@ class CameraStreamer:
                 logger.error(f"Error capturing frame: {e}")
                 time.sleep(1)
     
-    
     def get_frame(self):
         """Get the latest frame for streaming"""
         with self.condition:
@@ -122,22 +121,6 @@ HTML_TEMPLATE = """
             padding: 20px;
             background-color: #000000;
             text-align: center;
-        }
-        .wifi-indicator {
-            position: relative;
-            top: 10px;
-            margin-left: 740px;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: bold;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            border: 3px solid #ddd;
-            z-index: 100;
-            min-width: 120px;
-            text-align: center;
-            transition: all 0.3s ease;
         }
         .wifi-bars {
             display: inline-flex;
@@ -213,6 +196,44 @@ HTML_TEMPLATE = """
             margin: 20px 0;
             text-align: center;
         }
+        .video-section {
+            margin-bottom: 20px;
+        }
+        .wifi-indicator {
+            position: relative;
+            display: inline-block;
+            float: right;
+            margin-top: 10px;
+            margin-right: 50px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 3px solid #ddd;
+            min-width: 120px;
+            text-align: center;
+            transition: all 0.3s ease;
+            clear: both;
+        }
+            position: relative;
+            display: inline-block;
+            float: right;
+            margin-top: 10px;
+            margin-right: 50px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 3px solid #ddd;
+            min-width: 120px;
+            text-align: center;
+            transition: all 0.3s ease;
+            clear: both;
+        }
         .info {
             margin-top: 20px;
             padding: 15px;
@@ -234,19 +255,56 @@ HTML_TEMPLATE = """
         .signal-poor { color: #dc3545; font-weight: bold; }
         .status-running { color: #28a745; font-weight: bold; }
         .status-stopped { color: #dc3545; font-weight: bold; }
+        .controls {
+            margin-top: 15px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         
         
-        <div class="video-container">
-            <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
+        <div class="video-section">
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" class="camera-stream" alt="Camera Stream">
+            </div>
+
+            <!-- WiFi Signal Indicator (below camera, right side) -->
+            <div class="wifi-indicator wifi-unknown" id="wifi-indicator">
+                <div class="wifi-bars" id="wifi-bars">
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                    <div class="wifi-bar"></div>
+                </div>
+                <span id="wifi-display">Loading...</span>
+            </div>
         </div>
 
-        <!-- WiFi Signal Indicator -->
-        <div class="wifi-indicator" id="wifi-indicator">
-            <span id="wifi-display">Loading...</span>
+        <div class="info">
+            <p><strong>Status:</strong> <span id="camera-status">Camera is streaming live</span></p>
+            <p><strong>Resolution:</strong> 640x480</p>
+            <p><strong>WiFi Network:</strong> <span id="wifi-ssid">Loading...</span></p>
+            <p><strong>WiFi Signal:</strong> <span id="wifi-signal">Loading...</span></p>
+            <p><strong>IP Address:</strong> <span id="ip-address">Loading...</span></p>
+            <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
+            <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
+        </div>
+
+        <div class="controls">
+            <button onclick="location.reload()">🔄 Refresh Stream</button>
         </div>
         
         <script>
@@ -255,25 +313,7 @@ HTML_TEMPLATE = """
                 console.log('Updating status...');
                 fetch('/status')
                     .then(response => {
-                        // Update WiFi info in details section
-                        const wifiSsidEl = document.getElementById('wifi-ssid');
-                        if (wifiSsidEl) {
-                            wifiSsidEl.textContent = data.wifi_ssid || 'Unknown';
-                        }
-                        
-                        const signalEl = document.getElementById('wifi-signal');
-                        if (signalEl) {
-                            let signalText = 'Unknown';
-                            let signalClass = '';
-                            
-                            if (data.wifi_signal_dbm !== null) {
-                                signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
-                                signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
-                            }
-                            
-                            signalEl.textContent = signalText;
-                            signalEl.className = signalClass;
-                        }console.log('Status response received:', response.status);
+                        console.log('Status response received:', response.status);
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
@@ -294,7 +334,7 @@ HTML_TEMPLATE = """
                             }
                         }
                         
-                        // Update WiFi indicator at the top
+                        // Update WiFi indicator with bars
                         const wifiDisplayEl = document.getElementById('wifi-display');
                         const wifiIndicatorEl = document.getElementById('wifi-indicator');
                         const wifiBars = document.querySelectorAll('.wifi-bar');
@@ -353,6 +393,26 @@ HTML_TEMPLATE = """
                                     bar.style.backgroundColor = '#ddd';
                                 }
                             });
+                        }
+                        
+                        // Update WiFi info in details section
+                        const wifiSsidEl = document.getElementById('wifi-ssid');
+                        if (wifiSsidEl) {
+                            wifiSsidEl.textContent = data.wifi_ssid || 'Unknown';
+                        }
+                        
+                        const signalEl = document.getElementById('wifi-signal');
+                        if (signalEl) {
+                            let signalText = 'Unknown';
+                            let signalClass = '';
+                            
+                            if (data.wifi_signal_dbm !== null) {
+                                signalText = `${data.wifi_signal_quality} (${data.wifi_signal_dbm} dBm, ${data.wifi_signal_percent}%)`;
+                                signalClass = `signal-${data.wifi_signal_quality.toLowerCase()}`;
+                            }
+                            
+                            signalEl.textContent = signalText;
+                            signalEl.className = signalClass;
                         }
                         
                         // Update system info
@@ -545,87 +605,6 @@ def status():
         'cpu_temp': system_info['cpu_temp'],
         'uptime': system_info['uptime']
     }
-    """Get system information including WiFi signal strength"""
-    info = {}
-    
-    try:
-        # Get WiFi signal strength
-        result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            # Parse iwconfig output for signal strength
-            lines = result.stdout
-            signal_match = re.search(r'Signal level=(-?\d+) dBm', lines)
-            if signal_match:
-                signal_dbm = int(signal_match.group(1))
-                info['wifi_signal_dbm'] = signal_dbm
-                
-                # Convert dBm to percentage (rough approximation)
-                if signal_dbm >= -30:
-                    info['wifi_signal_percent'] = 100
-                elif signal_dbm >= -67:
-                    info['wifi_signal_percent'] = 70
-                elif signal_dbm >= -70:
-                    info['wifi_signal_percent'] = 50
-                elif signal_dbm >= -80:
-                    info['wifi_signal_percent'] = 30
-                else:
-                    info['wifi_signal_percent'] = 10
-                    
-                info['wifi_signal_quality'] = 'Excellent' if signal_dbm >= -30 else \
-                                            'Good' if signal_dbm >= -67 else \
-                                            'Fair' if signal_dbm >= -70 else \
-                                            'Weak' if signal_dbm >= -80 else 'Poor'
-            else:
-                info['wifi_signal_dbm'] = None
-                info['wifi_signal_percent'] = None
-                info['wifi_signal_quality'] = 'Unknown'
-                
-            # Get WiFi network name (SSID)
-            ssid_match = re.search(r'ESSID:"([^"]*)"', lines)
-            if ssid_match:
-                info['wifi_ssid'] = ssid_match.group(1)
-            else:
-                info['wifi_ssid'] = 'Not connected'
-        else:
-            info['wifi_signal_dbm'] = None
-            info['wifi_signal_percent'] = None
-            info['wifi_signal_quality'] = 'No WiFi'
-            info['wifi_ssid'] = 'No WiFi'
-    except Exception as e:
-        logger.warning(f"Could not get WiFi info: {e}")
-        info['wifi_signal_dbm'] = None
-        info['wifi_signal_percent'] = None
-        info['wifi_signal_quality'] = 'Error'
-        info['wifi_ssid'] = 'Error'
-    
-    try:
-        # Get IP address
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        info['ip_address'] = s.getsockname()[0]
-        s.close()
-    except Exception:
-        info['ip_address'] = 'Unknown'
-    
-    try:
-        # Get CPU temperature
-        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
-            temp = int(f.read().strip()) / 1000.0
-            info['cpu_temp'] = f"{temp:.1f}°C"
-    except Exception:
-        info['cpu_temp'] = 'Unknown'
-    
-    try:
-        # Get uptime
-        with open('/proc/uptime', 'r') as f:
-            uptime_seconds = float(f.read().split()[0])
-            hours = int(uptime_seconds // 3600)
-            minutes = int((uptime_seconds % 3600) // 60)
-            info['uptime'] = f"{hours}h {minutes}m"
-    except Exception:
-        info['uptime'] = 'Unknown'
-    
-    return info
 
 def main():
     """Main function to start the camera server"""
