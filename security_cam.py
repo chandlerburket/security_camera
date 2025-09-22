@@ -32,6 +32,13 @@ except ImportError:
     print("❌ PIL not found. Install with: sudo apt install python3-pil")
     sys.exit(1)
 
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    print("❌ OpenCV not found. Install with: sudo apt install python3-opencv-python")
+    sys.exit(1)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,6 +50,13 @@ class CameraStreamer:
         self.condition = threading.Condition()
         self.frame = None
         self.running = False
+
+        # Motion detection variables
+        self.motion_detected = False
+        self.background_subtractor = None
+        self.previous_frame = None
+        self.motion_threshold = 5000  # Minimum area for motion detection
+        self.last_motion_time = 0
         
     def initialize_camera(self):
         """Initialize the camera with optimal settings for streaming"""
@@ -66,7 +80,55 @@ class CameraStreamer:
         except Exception as e:
             logger.error(f"Failed to initialize camera: {e}")
             return False
-    
+
+    def detect_motion(self, frame_bytes):
+        """Detect motion in the current frame using OpenCV"""
+        try:
+            # Convert JPEG bytes to OpenCV image
+            nparr = np.frombuffer(frame_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            # Convert to grayscale for motion detection
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, (21, 21), 0)
+
+            # Initialize background frame if this is the first frame
+            if self.previous_frame is None:
+                self.previous_frame = gray
+                return False
+
+            # Compute the absolute difference between current and previous frame
+            frame_delta = cv2.absdiff(self.previous_frame, gray)
+
+            # Apply threshold to get binary image
+            thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
+
+            # Dilate the thresholded image to fill in holes
+            thresh = cv2.dilate(thresh, None, iterations=2)
+
+            # Find contours
+            contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # Check if any contour is large enough to be considered motion
+            motion_detected = False
+            for contour in contours:
+                if cv2.contourArea(contour) > self.motion_threshold:
+                    motion_detected = True
+                    self.last_motion_time = time.time()
+                    break
+
+            # Update previous frame
+            self.previous_frame = gray
+
+            # Update motion status
+            self.motion_detected = motion_detected or (time.time() - self.last_motion_time < 3.0)
+
+            return self.motion_detected
+
+        except Exception as e:
+            logger.error(f"Error in motion detection: {e}")
+            return False
+
     def capture_frames(self):
         """Continuously capture frames from camera"""
         self.running = True
@@ -76,10 +138,14 @@ class CameraStreamer:
                 # Capture directly to JPEG bytes using main stream
                 buffer = io.BytesIO()
                 self.picam2.capture_file(buffer, format='jpeg')
-                
+                frame_bytes = buffer.getvalue()
+
+                # Perform motion detection on the frame
+                self.detect_motion(frame_bytes)
+
                 # Update shared frame data
                 with self.condition:
-                    self.frame = buffer.getvalue()
+                    self.frame = frame_bytes
                     self.condition.notify_all()
                     
                 # Small delay to prevent overwhelming the system
@@ -94,7 +160,14 @@ class CameraStreamer:
         with self.condition:
             self.condition.wait()
             return self.frame
-    
+
+    def get_motion_status(self):
+        """Get current motion detection status"""
+        return {
+            'motion_detected': self.motion_detected,
+            'last_motion_time': self.last_motion_time
+        }
+
     def stop(self):
         """Stop the camera and cleanup resources"""
         self.running = False
@@ -250,7 +323,8 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="info">
-            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Status:</strong> <span id="camera-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #4CAF50; display: inline-block;"></span></p>
+            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Camera Status:</strong> <span id="camera-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #4CAF50; display: inline-block;"></span></p>
+            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Motion Detection:</strong> <span id="motion-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #9E9E9E; display: inline-block;"></span></p>
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
@@ -278,6 +352,16 @@ HTML_TEMPLATE = """
                                 cameraStatusEl.style.backgroundColor = '#4CAF50'; // Green for running
                             } else {
                                 cameraStatusEl.style.backgroundColor = '#f44336'; // Red for stopped
+                            }
+                        }
+
+                        // Update motion detection status indicator
+                        const motionStatusEl = document.getElementById('motion-status');
+                        if (motionStatusEl) {
+                            if (data.motion_detected) {
+                                motionStatusEl.style.backgroundColor = '#FF5722'; // Orange for motion detected
+                            } else {
+                                motionStatusEl.style.backgroundColor = '#9E9E9E'; // Gray for no motion
                             }
                         }
                         
@@ -555,9 +639,12 @@ Camera Initialized: {streamer.picam2 is not None}
 def status():
     """API endpoint for camera and system status"""
     system_info = get_system_info()
+    motion_status = streamer.get_motion_status()
     return {
         'status': 'running' if streamer.running else 'stopped',
         'camera_initialized': streamer.picam2 is not None,
+        'motion_detected': motion_status['motion_detected'],
+        'last_motion_time': motion_status['last_motion_time'],
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
         'wifi_signal_percent': system_info['wifi_signal_percent'],
         'wifi_signal_quality': system_info['wifi_signal_quality'],
