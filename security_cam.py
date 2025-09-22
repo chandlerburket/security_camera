@@ -575,11 +575,18 @@ HTML_TEMPLATE = """
                 const year = now.getFullYear();
                 const month = String(now.getMonth() + 1).padStart(2, '0');
                 const day = String(now.getDate()).padStart(2, '0');
-                const hours = String(now.getHours()).padStart(2, '0');
+
+                // Convert to 12-hour format
+                let hours = now.getHours();
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12; // the hour '0' should be '12'
+                const hoursFormatted = String(hours).padStart(2, '0');
+
                 const minutes = String(now.getMinutes()).padStart(2, '0');
                 const seconds = String(now.getSeconds()).padStart(2, '0');
 
-                const dateTimeString = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                const dateTimeString = `${year}-${month}-${day} ${hoursFormatted}:${minutes}:${seconds} ${ampm}`;
                 const overlay = document.getElementById('datetime-overlay');
                 if (overlay) {
                     overlay.textContent = dateTimeString;
