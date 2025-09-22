@@ -293,7 +293,6 @@ HTML_TEMPLATE = """
             font-family: Arial, sans-serif;
             color: slategray; 
             margin: 0;
-            padding: 20px;
             background-color: #000000;
             text-align: center;
         }
