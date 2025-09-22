@@ -425,7 +425,6 @@ HTML_TEMPLATE = """
 
         <div class="info">
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Camera Status:</strong> <span id="camera-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #4CAF50; display: inline-block;"></span></p>
-            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Motion Detection:</strong> <span id="motion-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #9E9E9E; display: inline-block;"></span></p>
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
@@ -456,15 +455,6 @@ HTML_TEMPLATE = """
                             }
                         }
 
-                        // Update motion detection status indicator
-                        const motionStatusEl = document.getElementById('motion-status');
-                        if (motionStatusEl) {
-                            if (data.motion_detected) {
-                                motionStatusEl.style.backgroundColor = '#FF5722'; // Orange for motion detected
-                            } else {
-                                motionStatusEl.style.backgroundColor = '#9E9E9E'; // Gray for no motion
-                            }
-                        }
                         
                         // Update WiFi bars in info section
                         const wifiBars = document.querySelectorAll('#wifi-bars .wifi-bar');
