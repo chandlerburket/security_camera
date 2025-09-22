@@ -39,6 +39,13 @@ except ImportError:
     print("❌ OpenCV not found. Install with: sudo apt install python3-opencv-python")
     sys.exit(1)
 
+try:
+    import requests
+    from requests.auth import HTTPBasicAuth
+except ImportError:
+    print("❌ requests not found. Install with: pip install requests")
+    sys.exit(1)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,7 +64,26 @@ class CameraStreamer:
         self.previous_frame = None
         self.motion_threshold = 5000  # Minimum area for motion detection
         self.last_motion_time = 0
-        
+        self.last_save_time = 0  # Track when last image was saved
+
+        # OwnCloud configuration - update these with your server details
+        self.owncloud_enabled = False  # Set to True to enable uploads
+        self.owncloud_url = "http://192.168.1.100"  # Your OwnCloud server IP
+        self.owncloud_username = "camera_user"  # Your OwnCloud username
+        self.owncloud_password = "your_password"  # Your OwnCloud password
+        self.owncloud_folder = "/motion_captures"  # Folder to save images
+        self.save_interval = 5  # Minimum seconds between saves
+
+    def configure_owncloud(self, url, username, password, folder="/motion_captures", enabled=True):
+        """Configure OwnCloud settings for image uploads"""
+        self.owncloud_url = url.rstrip('/')  # Remove trailing slash
+        self.owncloud_username = username
+        self.owncloud_password = password
+        self.owncloud_folder = folder if folder.startswith('/') else f'/{folder}'
+        self.owncloud_enabled = enabled
+
+        logger.info(f"🔧 OwnCloud configured: {url}{folder} (enabled: {enabled})")
+
     def initialize_camera(self):
         """Initialize the camera with optimal settings for streaming"""
         try:
@@ -141,7 +167,11 @@ class CameraStreamer:
                 frame_bytes = buffer.getvalue()
 
                 # Perform motion detection on the frame
-                self.detect_motion(frame_bytes)
+                motion_detected = self.detect_motion(frame_bytes)
+
+                # Save image if motion is detected
+                if motion_detected:
+                    self.save_motion_image(frame_bytes)
 
                 # Update shared frame data
                 with self.condition:
@@ -167,6 +197,77 @@ class CameraStreamer:
             'motion_detected': self.motion_detected,
             'last_motion_time': self.last_motion_time
         }
+
+    def upload_to_owncloud(self, image_data, filename):
+        """Upload image data to OwnCloud server via WebDAV"""
+        if not self.owncloud_enabled:
+            return False
+
+        try:
+            # Construct the full WebDAV URL
+            webdav_url = f"{self.owncloud_url}/remote.php/webdav{self.owncloud_folder}/{filename}"
+
+            # Prepare authentication
+            auth = HTTPBasicAuth(self.owncloud_username, self.owncloud_password)
+
+            # Set headers for WebDAV upload
+            headers = {
+                'Content-Type': 'image/jpeg',
+            }
+
+            # Upload the file using PUT method
+            response = requests.put(
+                webdav_url,
+                data=image_data,
+                auth=auth,
+                headers=headers,
+                timeout=10
+            )
+
+            if response.status_code in [200, 201, 204]:
+                logger.info(f"✅ Successfully uploaded {filename} to OwnCloud")
+                return True
+            else:
+                logger.error(f"❌ Failed to upload {filename}. Status: {response.status_code}, Response: {response.text}")
+                return False
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Network error uploading to OwnCloud: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Unexpected error uploading to OwnCloud: {e}")
+            return False
+
+    def save_motion_image(self, frame_bytes):
+        """Save image when motion is detected"""
+        current_time = time.time()
+
+        # Check if enough time has passed since last save
+        if current_time - self.last_save_time < self.save_interval:
+            return False
+
+        try:
+            # Generate filename with timestamp
+            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(current_time))
+            filename = f"motion_{timestamp}.jpg"
+
+            # Upload to OwnCloud if enabled
+            if self.owncloud_enabled:
+                success = self.upload_to_owncloud(frame_bytes, filename)
+                if success:
+                    self.last_save_time = current_time
+                    logger.info(f"📸 Motion detected - image saved: {filename}")
+                    return True
+                else:
+                    logger.error(f"❌ Failed to save motion image: {filename}")
+                    return False
+            else:
+                logger.info("📸 Motion detected but OwnCloud upload is disabled")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error saving motion image: {e}")
+            return False
 
     def stop(self):
         """Stop the camera and cleanup resources"""
@@ -645,6 +746,7 @@ def status():
         'camera_initialized': streamer.picam2 is not None,
         'motion_detected': motion_status['motion_detected'],
         'last_motion_time': motion_status['last_motion_time'],
+        'owncloud_enabled': streamer.owncloud_enabled,
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
         'wifi_signal_percent': system_info['wifi_signal_percent'],
         'wifi_signal_quality': system_info['wifi_signal_quality'],
@@ -654,10 +756,64 @@ def status():
         'uptime': system_info['uptime']
     }
 
+@app.route('/test-owncloud')
+def test_owncloud():
+    """Test OwnCloud connection"""
+    if not streamer.owncloud_enabled:
+        return {"status": "error", "message": "OwnCloud is not enabled"}
+
+    try:
+        # Test connection by trying to create a test file
+        test_filename = f"test_connection_{int(time.time())}.txt"
+        test_data = b"OwnCloud connection test from security camera"
+
+        webdav_url = f"{streamer.owncloud_url}/remote.php/webdav{streamer.owncloud_folder}/{test_filename}"
+        auth = HTTPBasicAuth(streamer.owncloud_username, streamer.owncloud_password)
+
+        response = requests.put(
+            webdav_url,
+            data=test_data,
+            auth=auth,
+            headers={'Content-Type': 'text/plain'},
+            timeout=10
+        )
+
+        if response.status_code in [200, 201, 204]:
+            # Delete the test file
+            requests.delete(webdav_url, auth=auth, timeout=5)
+            return {"status": "success", "message": "OwnCloud connection successful"}
+        else:
+            return {
+                "status": "error",
+                "message": f"Connection failed. Status: {response.status_code}",
+                "details": response.text
+            }
+
+    except Exception as e:
+        return {"status": "error", "message": f"Connection error: {str(e)}"}
+
 def main():
     """Main function to start the camera server"""
     print("🎥 Starting Raspberry Pi Camera Web Server...")
-    
+
+    # Try to load OwnCloud configuration
+    try:
+        from owncloud_config import OWNCLOUD_CONFIG
+        streamer.configure_owncloud(
+            url=OWNCLOUD_CONFIG["url"],
+            username=OWNCLOUD_CONFIG["username"],
+            password=OWNCLOUD_CONFIG["password"],
+            folder=OWNCLOUD_CONFIG["folder"],
+            enabled=OWNCLOUD_CONFIG["enabled"]
+        )
+        streamer.save_interval = OWNCLOUD_CONFIG.get("save_interval", 5)
+        print("✅ OwnCloud configuration loaded")
+    except ImportError:
+        print("⚠️  No OwnCloud configuration found. Copy owncloud_config_example.py to owncloud_config.py and configure it.")
+        print("   Motion detection will work, but images won't be saved to OwnCloud.")
+    except Exception as e:
+        print(f"⚠️  Error loading OwnCloud configuration: {e}")
+
     # Initialize camera
     if not streamer.initialize_camera():
         print("❌ Failed to initialize camera. Please check your camera connection.")
