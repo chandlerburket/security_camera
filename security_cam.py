@@ -74,6 +74,13 @@ class CameraStreamer:
         self.owncloud_folder = "/motion_captures"  # Folder to save images
         self.save_interval = 5  # Minimum seconds between saves
 
+        # Pushover configuration - update these with your Pushover credentials
+        self.pushover_enabled = False  # Set to True to enable notifications
+        self.pushover_user_key = "your_pushover_user_key"  # Your Pushover user key
+        self.pushover_api_token = "your_pushover_api_token"  # Your Pushover application token
+        self.pushover_notify_interval = 60  # Minimum seconds between notifications
+        self.last_pushover_time = 0  # Track when last notification was sent
+
     def configure_owncloud(self, url, username, password, folder="/motion_captures", enabled=True):
         """Configure OwnCloud settings for image uploads"""
         self.owncloud_url = url.rstrip('/')  # Remove trailing slash
@@ -83,6 +90,15 @@ class CameraStreamer:
         self.owncloud_enabled = enabled
 
         logger.info(f"🔧 OwnCloud configured: {url}{folder} (enabled: {enabled})")
+
+    def configure_pushover(self, user_key, api_token, enabled=True, notify_interval=60):
+        """Configure Pushover settings for motion notifications"""
+        self.pushover_user_key = user_key
+        self.pushover_api_token = api_token
+        self.pushover_enabled = enabled
+        self.pushover_notify_interval = notify_interval
+
+        logger.info(f"🔔 Pushover configured (enabled: {enabled}, interval: {notify_interval}s)")
 
     def initialize_camera(self):
         """Initialize the camera with optimal settings for streaming"""
@@ -238,6 +254,58 @@ class CameraStreamer:
             logger.error(f"❌ Unexpected error uploading to OwnCloud: {e}")
             return False
 
+    def send_pushover_notification(self, message, title="Motion Detected"):
+        """Send a notification via Pushover API"""
+        if not self.pushover_enabled:
+            return False
+
+        current_time = time.time()
+
+        # Check if enough time has passed since last notification
+        if current_time - self.last_pushover_time < self.pushover_notify_interval:
+            return False
+
+        try:
+            # Pushover API endpoint
+            pushover_url = "https://api.pushover.net/1/messages.json"
+
+            # Prepare the notification data
+            data = {
+                'token': self.pushover_api_token,
+                'user': self.pushover_user_key,
+                'message': message,
+                'title': title,
+                'priority': 0,  # Normal priority
+                'sound': 'pushover'  # Default sound
+            }
+
+            # Send the notification
+            response = requests.post(
+                pushover_url,
+                data=data,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                response_json = response.json()
+                if response_json.get('status') == 1:
+                    self.last_pushover_time = current_time
+                    logger.info(f"🔔 Pushover notification sent successfully")
+                    return True
+                else:
+                    logger.error(f"❌ Pushover API error: {response_json.get('errors', 'Unknown error')}")
+                    return False
+            else:
+                logger.error(f"❌ Failed to send Pushover notification. Status: {response.status_code}")
+                return False
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Network error sending Pushover notification: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Unexpected error sending Pushover notification: {e}")
+            return False
+
     def save_motion_image(self, frame_bytes):
         """Save image when motion is detected"""
         current_time = time.time()
@@ -251,6 +319,10 @@ class CameraStreamer:
             timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(current_time))
             filename = f"motion_{timestamp}.jpg"
 
+            # Send Pushover notification
+            notification_message = f"Motion detected at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(current_time))}"
+            self.send_pushover_notification(notification_message)
+
             # Upload to OwnCloud if enabled
             if self.owncloud_enabled:
                 success = self.upload_to_owncloud(frame_bytes, filename)
@@ -263,7 +335,8 @@ class CameraStreamer:
                     return False
             else:
                 logger.info("📸 Motion detected but OwnCloud upload is disabled")
-                return False
+                self.last_save_time = current_time  # Still update save time for notification throttling
+                return True
 
         except Exception as e:
             logger.error(f"❌ Error saving motion image: {e}")
@@ -743,6 +816,7 @@ def status():
         'motion_detected': motion_status['motion_detected'],
         'last_motion_time': motion_status['last_motion_time'],
         'owncloud_enabled': streamer.owncloud_enabled,
+        'pushover_enabled': streamer.pushover_enabled,
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
         'wifi_signal_percent': system_info['wifi_signal_percent'],
         'wifi_signal_quality': system_info['wifi_signal_quality'],
@@ -788,6 +862,25 @@ def test_owncloud():
     except Exception as e:
         return {"status": "error", "message": f"Connection error: {str(e)}"}
 
+@app.route('/test-pushover')
+def test_pushover():
+    """Test Pushover notification"""
+    if not streamer.pushover_enabled:
+        return {"status": "error", "message": "Pushover is not enabled"}
+
+    try:
+        # Send a test notification
+        test_message = f"Test notification from security camera at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        success = streamer.send_pushover_notification(test_message, "Test Notification")
+
+        if success:
+            return {"status": "success", "message": "Pushover test notification sent successfully"}
+        else:
+            return {"status": "error", "message": "Failed to send test notification"}
+
+    except Exception as e:
+        return {"status": "error", "message": f"Test error: {str(e)}"}
+
 def main():
     """Main function to start the camera server"""
     print("🎥 Starting Raspberry Pi Camera Web Server...")
@@ -809,6 +902,22 @@ def main():
         print("   Motion detection will work, but images won't be saved to OwnCloud.")
     except Exception as e:
         print(f"⚠️  Error loading OwnCloud configuration: {e}")
+
+    # Try to load Pushover configuration
+    try:
+        from pushover_config import PUSHOVER_CONFIG
+        streamer.configure_pushover(
+            user_key=PUSHOVER_CONFIG["user_key"],
+            api_token=PUSHOVER_CONFIG["api_token"],
+            enabled=PUSHOVER_CONFIG["enabled"],
+            notify_interval=PUSHOVER_CONFIG.get("notify_interval", 60)
+        )
+        print("✅ Pushover configuration loaded")
+    except ImportError:
+        print("⚠️  No Pushover configuration found. Create pushover_config.py to enable notifications.")
+        print("   Motion detection will work, but no notifications will be sent.")
+    except Exception as e:
+        print(f"⚠️  Error loading Pushover configuration: {e}")
 
     # Initialize camera
     if not streamer.initialize_camera():
