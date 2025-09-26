@@ -254,8 +254,8 @@ class CameraStreamer:
             logger.error(f"❌ Unexpected error uploading to OwnCloud: {e}")
             return False
 
-    def send_pushover_notification(self, message, title="Motion Detected"):
-        """Send a notification via Pushover API"""
+    def send_pushover_notification(self, message, title="Motion Detected", image_bytes=None):
+        """Send a notification via Pushover API with optional image attachment"""
         if not self.pushover_enabled:
             return False
 
@@ -279,10 +279,18 @@ class CameraStreamer:
                 'sound': 'pushover'  # Default sound
             }
 
+            # Prepare files for image attachment if provided
+            files = None
+            if image_bytes:
+                files = {
+                    'attachment': ('motion_capture.jpg', image_bytes, 'image/jpeg')
+                }
+
             # Send the notification
             response = requests.post(
                 pushover_url,
                 data=data,
+                files=files,
                 timeout=10
             )
 
@@ -290,7 +298,8 @@ class CameraStreamer:
                 response_json = response.json()
                 if response_json.get('status') == 1:
                     self.last_pushover_time = current_time
-                    logger.info(f"🔔 Pushover notification sent successfully")
+                    image_status = " with image" if image_bytes else ""
+                    logger.info(f"🔔 Pushover notification sent successfully{image_status}")
                     return True
                 else:
                     logger.error(f"❌ Pushover API error: {response_json.get('errors', 'Unknown error')}")
@@ -319,9 +328,9 @@ class CameraStreamer:
             timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(current_time))
             filename = f"motion_{timestamp}.jpg"
 
-            # Send Pushover notification
+            # Send Pushover notification with image
             notification_message = f"Motion detected at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(current_time))}"
-            self.send_pushover_notification(notification_message)
+            self.send_pushover_notification(notification_message, image_bytes=frame_bytes)
 
             # Upload to OwnCloud if enabled
             if self.owncloud_enabled:
