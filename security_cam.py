@@ -15,7 +15,7 @@ import re
 
 # Try importing required packages and provide helpful error messages
 try:
-    from flask import Flask, render_template_string, Response
+    from flask import Flask, render_template_string, Response, request
 except ImportError:
     print("❌ Flask not found. Install with: sudo apt install python3-flask")
     sys.exit(1)
@@ -63,6 +63,13 @@ class CameraStreamer:
         self.last_motion_time = 0
         self.last_save_time = 0  # Track when last image was saved
 
+        # Human detection variables
+        self.human_detected = False
+        self.last_human_time = 0
+        self.human_detection_enabled = True  # Enable/disable human detection
+        self.hog = None  # HOG descriptor for human detection
+        self.human_detection_confidence = 0.5  # Confidence threshold for human detection
+
         # OwnCloud configuration - update these with your server details
         self.owncloud_enabled = False  # Set to True to enable uploads
         self.owncloud_url = "http://192.168.1.100"  # Your OwnCloud server IP
@@ -89,7 +96,7 @@ class CameraStreamer:
         logger.info(f"🔧 OwnCloud configured: {url}{folder} (enabled: {enabled})")
 
     def configure_pushover(self, user_key, api_token, enabled=True, notify_interval=60):
-        """Configure Pushover settings for motion notifications"""
+        """Configure Pushover settings for human detection notifications"""
         self.pushover_user_key = user_key
         self.pushover_api_token = api_token
         self.pushover_enabled = enabled
@@ -97,28 +104,93 @@ class CameraStreamer:
 
         logger.info(f"🔔 Pushover configured (enabled: {enabled}, interval: {notify_interval}s)")
 
+    def configure_human_detection(self, enabled=True, confidence=0.5):
+        """Configure human detection settings"""
+        self.human_detection_enabled = enabled
+        self.human_detection_confidence = confidence
+
+        # Reinitialize HOG if camera is already running
+        if enabled and self.picam2 is not None:
+            try:
+                self.hog = cv2.HOGDescriptor()
+                self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+                logger.info(f"👤 Human detection configured (enabled: {enabled}, confidence: {confidence})")
+            except Exception as e:
+                logger.error(f"Failed to configure human detection: {e}")
+                self.human_detection_enabled = False
+        else:
+            logger.info(f"👤 Human detection configured (enabled: {enabled}, confidence: {confidence})")
+
     def initialize_camera(self):
         """Initialize the camera with optimal settings for streaming"""
         try:
             self.picam2 = Picamera2()
-            
+
             # Optimized configuration for Pi Zero W - lower resolution and frame rate
             config = self.picam2.create_video_configuration(
                 main={"size": (320, 240)},  # Reduced resolution for Pi Zero W
                 controls={"FrameRate": 15}  # Lower frame rate to reduce CPU load
             )
-            
+
             self.picam2.configure(config)
             self.picam2.start()
-            
+
+            # Initialize HOG descriptor for human detection
+            if self.human_detection_enabled:
+                try:
+                    self.hog = cv2.HOGDescriptor()
+                    self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+                    logger.info("Human detection initialized successfully")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize human detection: {e}")
+                    self.human_detection_enabled = False
+
             # Shorter warm-up time for Pi Zero W
             time.sleep(1)
-            
+
             logger.info("Camera initialized successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize camera: {e}")
+            return False
+
+    def detect_humans(self, frame):
+        """Detect humans in the frame using HOG descriptor"""
+        if not self.human_detection_enabled or self.hog is None:
+            return False
+
+        try:
+            # Resize frame for faster processing on Pi Zero W
+            height, width = frame.shape[:2]
+            if width > 160:  # Only resize if frame is larger
+                scale = 160.0 / width
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                resized_frame = cv2.resize(frame, (new_width, new_height))
+            else:
+                resized_frame = frame
+
+            # Detect people using HOG
+            (rects, weights) = self.hog.detectMultiScale(
+                resized_frame,
+                winStride=(4, 4),  # Smaller stride for Pi Zero W
+                padding=(4, 4),
+                scale=1.05,
+                finalThreshold=self.human_detection_confidence
+            )
+
+            # Filter detections by confidence
+            human_detected = len(rects) > 0 and any(weight > self.human_detection_confidence for weight in weights)
+
+            if human_detected:
+                self.last_human_time = time.time()
+                logger.info(f"Human detected with {len(rects)} detection(s)")
+
+            return human_detected
+
+        except Exception as e:
+            logger.error(f"Error in human detection: {e}")
             return False
 
     def detect_motion(self, frame_bytes):
@@ -136,7 +208,7 @@ class CameraStreamer:
             # Initialize background frame if this is the first frame
             if self.previous_frame is None:
                 self.previous_frame = gray
-                return False
+                return False, False
 
             # Compute the absolute difference between current and previous frame
             frame_delta = cv2.absdiff(self.previous_frame, gray)
@@ -164,11 +236,19 @@ class CameraStreamer:
             # Update motion status - shorter detection window for Pi Zero W
             self.motion_detected = motion_detected or (time.time() - self.last_motion_time < 2.0)
 
-            return self.motion_detected
+            # Perform human detection only if motion is detected (to save CPU)
+            human_detected = False
+            if self.motion_detected:
+                human_detected = self.detect_humans(frame)
+
+            # Update human detection status
+            self.human_detected = human_detected or (time.time() - self.last_human_time < 3.0)
+
+            return self.motion_detected, self.human_detected
 
         except Exception as e:
             logger.error(f"Error in motion detection: {e}")
-            return False
+            return False, False
 
     def capture_frames(self):
         """Continuously capture frames from camera"""
@@ -181,12 +261,12 @@ class CameraStreamer:
                 self.picam2.capture_file(buffer, format='jpeg')
                 frame_bytes = buffer.getvalue()
 
-                # Perform motion detection on the frame
-                motion_detected = self.detect_motion(frame_bytes)
+                # Perform motion and human detection on the frame
+                motion_detected, human_detected = self.detect_motion(frame_bytes)
 
-                # Save image if motion is detected
-                if motion_detected:
-                    self.save_motion_image(frame_bytes)
+                # Save image only if human is detected
+                if human_detected:
+                    self.save_human_detection_image(frame_bytes)
 
                 # Update shared frame data
                 with self.condition:
@@ -207,10 +287,13 @@ class CameraStreamer:
             return self.frame
 
     def get_motion_status(self):
-        """Get current motion detection status"""
+        """Get current motion and human detection status"""
         return {
             'motion_detected': self.motion_detected,
-            'last_motion_time': self.last_motion_time
+            'last_motion_time': self.last_motion_time,
+            'human_detected': self.human_detected,
+            'last_human_time': self.last_human_time,
+            'human_detection_enabled': self.human_detection_enabled
         }
 
     def upload_to_owncloud(self, image_data, filename):
@@ -314,8 +397,8 @@ class CameraStreamer:
             logger.error(f"❌ Unexpected error sending Pushover notification: {e}")
             return False
 
-    def save_motion_image(self, frame_bytes):
-        """Save image when motion is detected"""
+    def save_human_detection_image(self, frame_bytes):
+        """Save image when human is detected"""
         current_time = time.time()
 
         # Check if enough time has passed since last save
@@ -325,29 +408,29 @@ class CameraStreamer:
         try:
             # Generate filename with timestamp
             timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(current_time))
-            filename = f"motion_{timestamp}.jpg"
+            filename = f"human_{timestamp}.jpg"
 
             # Send Pushover notification with image
-            notification_message = f"Motion detected at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(current_time))}"
-            self.send_pushover_notification(notification_message, image_bytes=frame_bytes)
+            notification_message = f"Human detected at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(current_time))}"
+            self.send_pushover_notification(notification_message, "Human Detected", image_bytes=frame_bytes)
 
             # Upload to OwnCloud if enabled
             if self.owncloud_enabled:
                 success = self.upload_to_owncloud(frame_bytes, filename)
                 if success:
                     self.last_save_time = current_time
-                    logger.info(f"📸 Motion detected - image saved: {filename}")
+                    logger.info(f"👤 Human detected - image saved: {filename}")
                     return True
                 else:
-                    logger.error(f"❌ Failed to save motion image: {filename}")
+                    logger.error(f"❌ Failed to save human detection image: {filename}")
                     return False
             else:
-                logger.info("📸 Motion detected but OwnCloud upload is disabled")
+                logger.info("👤 Human detected but OwnCloud upload is disabled")
                 self.last_save_time = current_time  # Still update save time for notification throttling
                 return True
 
         except Exception as e:
-            logger.error(f"❌ Error saving motion image: {e}")
+            logger.error(f"❌ Error saving human detection image: {e}")
             return False
 
     def stop(self):
@@ -824,6 +907,9 @@ def status():
         'camera_initialized': streamer.picam2 is not None,
         'motion_detected': motion_status['motion_detected'],
         'last_motion_time': motion_status['last_motion_time'],
+        'human_detected': motion_status['human_detected'],
+        'last_human_time': motion_status['last_human_time'],
+        'human_detection_enabled': motion_status['human_detection_enabled'],
         'owncloud_enabled': streamer.owncloud_enabled,
         'pushover_enabled': streamer.pushover_enabled,
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
@@ -889,6 +975,21 @@ def test_pushover():
 
     except Exception as e:
         return {"status": "error", "message": f"Test error: {str(e)}"}
+
+@app.route('/configure-human-detection')
+def configure_human_detection():
+    """Configure human detection settings"""
+    enabled = request.args.get('enabled', 'true').lower() == 'true'
+    confidence = float(request.args.get('confidence', '0.5'))
+
+    try:
+        streamer.configure_human_detection(enabled=enabled, confidence=confidence)
+        return {
+            "status": "success",
+            "message": f"Human detection configured: enabled={enabled}, confidence={confidence}"
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Configuration error: {str(e)}"}
 
 def main():
     """Main function to start the camera server"""
