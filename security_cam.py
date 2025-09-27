@@ -12,6 +12,10 @@ import logging
 import subprocess
 import socket
 import re
+import signal
+import atexit
+import psutil
+from datetime import datetime, timedelta
 
 # Try importing required packages and provide helpful error messages
 try:
@@ -77,6 +81,16 @@ class CameraStreamer:
         self.pushover_api_token = "your_pushover_api_token"  # Your Pushover application token
         self.pushover_notify_interval = 120  # Increased interval for Pi Zero W
         self.last_pushover_time = 0  # Track when last notification was sent
+
+        # System monitoring variables
+        self.system_monitor_enabled = True
+        self.last_health_check = 0
+        self.health_check_interval = 300  # Check system health every 5 minutes
+        self.error_count = 0
+        self.max_errors_before_notification = 3
+        self.last_error_notification = 0
+        self.system_start_time = time.time()
+        self.startup_notification_sent = False
 
     def configure_owncloud(self, url, username, password, folder="/motion_captures", enabled=True):
         """Configure OwnCloud settings for image uploads"""
@@ -167,13 +181,13 @@ class CameraStreamer:
             return self.motion_detected
 
         except Exception as e:
-            logger.error(f"Error in motion detection: {e}")
+            self.handle_error(f"Error in motion detection: {e}", e)
             return False
 
     def capture_frames(self):
         """Continuously capture frames from camera"""
         self.running = True
-        
+
         while self.running:
             try:
                 # Capture directly to JPEG bytes using main stream
@@ -192,12 +206,15 @@ class CameraStreamer:
                 with self.condition:
                     self.frame = frame_bytes
                     self.condition.notify_all()
-                    
+
+                # Perform periodic health checks
+                self.check_system_health()
+
                 # Longer delay optimized for Pi Zero W
                 time.sleep(0.067)  # ~15 FPS - reduces CPU load on Pi Zero W
-                
+
             except Exception as e:
-                logger.error(f"Error capturing frame: {e}")
+                self.handle_error(f"Error capturing frame: {e}", e)
                 time.sleep(1)
     
     def get_frame(self):
@@ -253,7 +270,7 @@ class CameraStreamer:
             logger.error(f"❌ Unexpected error uploading to OwnCloud: {e}")
             return False
 
-    def send_pushover_notification(self, message, title="Motion Detected", image_bytes=None):
+    def send_pushover_notification(self, message, title="Security Camera", image_bytes=None, priority=0):
         """Send a notification via Pushover API with optional image attachment"""
         if not self.pushover_enabled:
             return False
@@ -274,7 +291,7 @@ class CameraStreamer:
                 'user': self.pushover_user_key,
                 'message': message,
                 'title': title,
-                'priority': 0,  # Normal priority
+                'priority': priority,  # Allow configurable priority
                 'sound': 'pushover'  # Default sound
             }
 
@@ -357,6 +374,111 @@ class CameraStreamer:
             self.picam2.stop()
             self.picam2.close()
         logger.info("Camera stopped")
+
+    def send_system_notification(self, message, title="System Alert", priority=1):
+        """Send system-related notifications with higher priority"""
+        return self.send_pushover_notification(message, title, priority=priority)
+
+    def check_system_health(self):
+        """Check system health and report issues"""
+        if not self.system_monitor_enabled:
+            return
+
+        current_time = time.time()
+        if current_time - self.last_health_check < self.health_check_interval:
+            return
+
+        self.last_health_check = current_time
+        issues = []
+
+        try:
+            # Check CPU temperature
+            try:
+                with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                    temp = int(f.read().strip()) / 1000.0
+                    if temp > 80:
+                        issues.append(f"High CPU temperature: {temp:.1f}°C")
+            except:
+                pass
+
+            # Check memory usage
+            try:
+                memory = psutil.virtual_memory()
+                if memory.percent > 90:
+                    issues.append(f"High memory usage: {memory.percent:.1f}%")
+            except:
+                pass
+
+            # Check disk space
+            try:
+                disk = psutil.disk_usage('/')
+                if disk.percent > 90:
+                    issues.append(f"Low disk space: {disk.percent:.1f}% used")
+            except:
+                pass
+
+            # Check if camera is still working
+            if not self.running or self.picam2 is None:
+                issues.append("Camera not running")
+
+            # Send notification if issues found
+            if issues:
+                message = "System health issues detected:\n" + "\n".join([f"• {issue}" for issue in issues])
+                self.send_system_notification(message, "System Health Alert")
+                logger.warning(f"System health issues: {issues}")
+
+        except Exception as e:
+            logger.error(f"Error during health check: {e}")
+
+    def handle_error(self, error_message, exception=None):
+        """Handle errors and send notifications if threshold reached"""
+        self.error_count += 1
+        current_time = time.time()
+
+        logger.error(f"Error #{self.error_count}: {error_message}")
+        if exception:
+            logger.error(f"Exception details: {exception}")
+
+        # Send notification if error threshold reached
+        if (self.error_count >= self.max_errors_before_notification and
+            current_time - self.last_error_notification > 900):  # 15 minutes
+
+            uptime = timedelta(seconds=int(current_time - self.system_start_time))
+            message = f"Multiple errors detected ({self.error_count} errors)\n\nLatest error: {error_message}\n\nSystem uptime: {uptime}"
+
+            self.send_system_notification(message, "Error Alert", priority=1)
+            self.last_error_notification = current_time
+            self.error_count = 0  # Reset counter after notification
+
+    def send_startup_notification(self):
+        """Send notification when system starts up"""
+        if self.startup_notification_sent or not self.pushover_enabled:
+            return
+
+        try:
+            hostname = socket.gethostname()
+            ip_address = socket.gethostbyname(hostname)
+            message = f"Security camera system started\n\nHostname: {hostname}\nIP: {ip_address}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+            self.send_system_notification(message, "System Startup")
+            self.startup_notification_sent = True
+            logger.info("Startup notification sent")
+        except Exception as e:
+            logger.error(f"Failed to send startup notification: {e}")
+
+    def send_shutdown_notification(self):
+        """Send notification when system shuts down"""
+        if not self.pushover_enabled:
+            return
+
+        try:
+            uptime = timedelta(seconds=int(time.time() - self.system_start_time))
+            message = f"Security camera system shutting down\n\nUptime: {uptime}\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+            self.send_system_notification(message, "System Shutdown")
+            logger.info("Shutdown notification sent")
+        except Exception as e:
+            logger.error(f"Failed to send shutdown notification: {e}")
 
 # Initialize Flask app and camera streamer
 app = Flask(__name__)
@@ -817,23 +939,33 @@ Camera Initialized: {streamer.picam2 is not None}
 @app.route('/status')
 def status():
     """API endpoint for camera and system status"""
-    system_info = get_system_info()
-    motion_status = streamer.get_motion_status()
-    return {
-        'status': 'running' if streamer.running else 'stopped',
-        'camera_initialized': streamer.picam2 is not None,
-        'motion_detected': motion_status['motion_detected'],
-        'last_motion_time': motion_status['last_motion_time'],
-        'owncloud_enabled': streamer.owncloud_enabled,
-        'pushover_enabled': streamer.pushover_enabled,
-        'wifi_signal_dbm': system_info['wifi_signal_dbm'],
-        'wifi_signal_percent': system_info['wifi_signal_percent'],
-        'wifi_signal_quality': system_info['wifi_signal_quality'],
-        'wifi_ssid': system_info['wifi_ssid'],
-        'ip_address': system_info['ip_address'],
-        'cpu_temp': system_info['cpu_temp'],
-        'uptime': system_info['uptime']
-    }
+    try:
+        system_info = get_system_info()
+        motion_status = streamer.get_motion_status()
+        uptime = timedelta(seconds=int(time.time() - streamer.system_start_time))
+
+        return {
+            'status': 'running' if streamer.running else 'stopped',
+            'camera_initialized': streamer.picam2 is not None,
+            'motion_detected': motion_status['motion_detected'],
+            'last_motion_time': motion_status['last_motion_time'],
+            'owncloud_enabled': streamer.owncloud_enabled,
+            'pushover_enabled': streamer.pushover_enabled,
+            'wifi_signal_dbm': system_info['wifi_signal_dbm'],
+            'wifi_signal_percent': system_info['wifi_signal_percent'],
+            'wifi_signal_quality': system_info['wifi_signal_quality'],
+            'wifi_ssid': system_info['wifi_ssid'],
+            'ip_address': system_info['ip_address'],
+            'cpu_temp': system_info['cpu_temp'],
+            'uptime': system_info['uptime'],
+            'system_uptime': str(uptime),
+            'error_count': streamer.error_count,
+            'monitoring_enabled': streamer.system_monitor_enabled,
+            'last_health_check': streamer.last_health_check
+        }
+    except Exception as e:
+        streamer.handle_error(f"Status endpoint error: {e}", e)
+        return {'status': 'error', 'message': str(e)}, 500
 
 @app.route('/test-owncloud')
 def test_owncloud():
@@ -890,9 +1022,28 @@ def test_pushover():
     except Exception as e:
         return {"status": "error", "message": f"Test error: {str(e)}"}
 
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    logger.info(f"Received signal {signum}, shutting down gracefully...")
+    streamer.send_shutdown_notification()
+    streamer.stop()
+    sys.exit(0)
+
+def emergency_shutdown():
+    """Emergency shutdown handler for atexit"""
+    try:
+        streamer.send_shutdown_notification()
+    except:
+        pass
+
 def main():
     """Main function to start the camera server"""
     print("🎥 Starting Raspberry Pi Camera Web Server...")
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    atexit.register(emergency_shutdown)
 
     # Try to load OwnCloud configuration
     try:
@@ -930,13 +1081,15 @@ def main():
 
     # Initialize camera
     if not streamer.initialize_camera():
-        print("❌ Failed to initialize camera. Please check your camera connection.")
+        error_msg = "Failed to initialize camera. Please check your camera connection."
+        print(f"❌ {error_msg}")
+        streamer.handle_error(error_msg)
         return
     
     # Start camera capture thread
     capture_thread = threading.Thread(target=streamer.capture_frames, daemon=True)
     capture_thread.start()
-    
+
     print("✅ Camera initialized successfully!")
     print("🌐 Starting web server...")
     print("📱 Access your camera stream at:")
@@ -944,9 +1097,13 @@ def main():
     print("   - Network: http://[your-pi-ip]:5000")
     print("\n💡 Tip: Find your Pi's IP with: hostname -I")
     print("🛑 Press Ctrl+C to stop the server\n")
-    
+
+    # Send startup notification
+    time.sleep(2)  # Give system time to stabilize
+    streamer.send_startup_notification()
+
     try:
-        # Start Flask server
+        # Start Flask server with error handling
         app.run(
             host='0.0.0.0',  # Allow access from any device on network
             port=5000,
@@ -956,6 +1113,16 @@ def main():
         )
     except KeyboardInterrupt:
         print("\n🛑 Shutting down server...")
+        streamer.send_shutdown_notification()
+    except Exception as e:
+        error_msg = f"Web server failed: {e}"
+        logger.error(error_msg)
+        streamer.handle_error(error_msg, e)
+        streamer.send_system_notification(
+            f"Web server crashed: {e}\n\nAttempting restart...",
+            "Server Failure",
+            priority=2
+        )
     finally:
         streamer.stop()
         print("✅ Camera server stopped successfully!")
