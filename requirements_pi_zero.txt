@@ -1,0 +1,25 @@
+# Optimized requirements for Raspberry Pi Zero W
+# Minimal dependencies to reduce memory footprint
+
+# Core camera functionality
+picamera2
+
+# Web framework (lightweight)
+flask
+
+# Basic image processing (lighter than opencv-python)
+# Note: Install system packages instead of pip for better Pi Zero W compatibility:
+# sudo apt update
+# sudo apt install python3-opencv python3-numpy
+
+# For notification features (optional - can be disabled)
+requests
+
+# System monitoring
+# Note: iwconfig should be available on most Raspberry Pi OS installations
+
+# Installation notes for Pi Zero W:
+# 1. Use system packages where possible: sudo apt install python3-picamera2 python3-flask
+# 2. For OpenCV: sudo apt install python3-opencv python3-numpy
+# 3. Only install requests via pip: pip3 install requests
+# 4. Consider using virtual environment to manage dependencies
