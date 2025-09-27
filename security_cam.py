@@ -26,17 +26,14 @@ except ImportError:
     print("❌ picamera2 not found. Install with: sudo apt install python3-picamera2")
     sys.exit(1)
 
-try:
-    from PIL import Image
-except ImportError:
-    print("❌ PIL not found. Install with: sudo apt install python3-pil")
-    sys.exit(1)
+# PIL removed - not needed for basic camera streaming on Pi Zero W
 
 try:
     import cv2
     import numpy as np
 except ImportError:
-    print("❌ OpenCV not found. Install with: sudo apt install python3-opencv-python")
+    print("❌ OpenCV not found. Install with: sudo apt install python3-opencv python3-numpy")
+    print("For Pi Zero W, use system packages for better performance")
     sys.exit(1)
 
 try:
@@ -62,7 +59,7 @@ class CameraStreamer:
         self.motion_detected = False
         self.background_subtractor = None
         self.previous_frame = None
-        self.motion_threshold = 5000  # Minimum area for motion detection
+        self.motion_threshold = 2000  # Reduced threshold for lower resolution on Pi Zero W
         self.last_motion_time = 0
         self.last_save_time = 0  # Track when last image was saved
 
@@ -72,13 +69,13 @@ class CameraStreamer:
         self.owncloud_username = "camera_user"  # Your OwnCloud username
         self.owncloud_password = "your_password"  # Your OwnCloud password
         self.owncloud_folder = "/motion_captures"  # Folder to save images
-        self.save_interval = 5  # Minimum seconds between saves
+        self.save_interval = 10  # Increased interval for Pi Zero W to reduce I/O load
 
         # Pushover configuration - update these with your Pushover credentials
         self.pushover_enabled = False  # Set to True to enable notifications
         self.pushover_user_key = "your_pushover_user_key"  # Your Pushover user key
         self.pushover_api_token = "your_pushover_api_token"  # Your Pushover application token
-        self.pushover_notify_interval = 60  # Minimum seconds between notifications
+        self.pushover_notify_interval = 120  # Increased interval for Pi Zero W
         self.last_pushover_time = 0  # Track when last notification was sent
 
     def configure_owncloud(self, url, username, password, folder="/motion_captures", enabled=True):
@@ -105,16 +102,17 @@ class CameraStreamer:
         try:
             self.picam2 = Picamera2()
             
-            # Simplified configuration with higher resolution for larger display
+            # Optimized configuration for Pi Zero W - lower resolution and frame rate
             config = self.picam2.create_video_configuration(
-                main={"size": (640, 480)}  # Increased resolution for larger display
+                main={"size": (320, 240)},  # Reduced resolution for Pi Zero W
+                controls={"FrameRate": 15}  # Lower frame rate to reduce CPU load
             )
             
             self.picam2.configure(config)
             self.picam2.start()
             
-            # Allow camera to warm up
-            time.sleep(2)
+            # Shorter warm-up time for Pi Zero W
+            time.sleep(1)
             
             logger.info("Camera initialized successfully")
             return True
@@ -132,7 +130,8 @@ class CameraStreamer:
 
             # Convert to grayscale for motion detection
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.GaussianBlur(gray, (21, 21), 0)
+            # Smaller blur kernel for Pi Zero W to reduce processing
+            gray = cv2.GaussianBlur(gray, (11, 11), 0)
 
             # Initialize background frame if this is the first frame
             if self.previous_frame is None:
@@ -143,10 +142,10 @@ class CameraStreamer:
             frame_delta = cv2.absdiff(self.previous_frame, gray)
 
             # Apply threshold to get binary image
-            thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
+            thresh = cv2.threshold(frame_delta, 30, 255, cv2.THRESH_BINARY)[1]
 
-            # Dilate the thresholded image to fill in holes
-            thresh = cv2.dilate(thresh, None, iterations=2)
+            # Reduce dilation iterations for Pi Zero W
+            thresh = cv2.dilate(thresh, None, iterations=1)
 
             # Find contours
             contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -162,8 +161,8 @@ class CameraStreamer:
             # Update previous frame
             self.previous_frame = gray
 
-            # Update motion status
-            self.motion_detected = motion_detected or (time.time() - self.last_motion_time < 3.0)
+            # Update motion status - shorter detection window for Pi Zero W
+            self.motion_detected = motion_detected or (time.time() - self.last_motion_time < 2.0)
 
             return self.motion_detected
 
@@ -194,8 +193,8 @@ class CameraStreamer:
                     self.frame = frame_bytes
                     self.condition.notify_all()
                     
-                # Small delay to prevent overwhelming the system
-                time.sleep(0.033)  # ~30 FPS
+                # Longer delay optimized for Pi Zero W
+                time.sleep(0.067)  # ~15 FPS - reduces CPU load on Pi Zero W
                 
             except Exception as e:
                 logger.error(f"Error capturing frame: {e}")
@@ -645,9 +644,9 @@ HTML_TEMPLATE = """
             // Wait for page to load before updating status
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('Page loaded, starting status updates');
-                // Update status immediately and then every 10 seconds
+                // Update status immediately and then every 15 seconds (reduced for Pi Zero W)
                 updateStatus();
-                setInterval(updateStatus, 10000);
+                setInterval(updateStatus, 15000);
             });
             
             // Function to update date and time overlay
@@ -678,10 +677,11 @@ HTML_TEMPLATE = """
             updateDateTime();
             setInterval(updateDateTime, 1000);
 
-            // Auto-refresh the page every 5 minutes to prevent connection issues
-            setTimeout(function() {
-                location.reload();
-            }, 300000);
+            // Auto-refresh disabled for Pi Zero W to reduce resource usage
+            // Uncomment below if needed:
+            // setTimeout(function() {
+            //     location.reload();
+            // }, 600000);  // 10 minutes instead of 5
         </script>
     </div>
 </body>
@@ -951,7 +951,8 @@ def main():
             host='0.0.0.0',  # Allow access from any device on network
             port=5000,
             debug=False,     # Disable debug mode for better performance
-            threaded=True    # Enable threading for multiple connections
+            threaded=True,   # Enable threading for multiple connections
+            use_reloader=False  # Disable reloader for Pi Zero W
         )
     except KeyboardInterrupt:
         print("\n🛑 Shutting down server...")
