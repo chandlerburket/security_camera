@@ -79,12 +79,13 @@ class CameraStreamer:
         self.pushover_notify_interval = 120  # Increased interval for Pi Zero W
         self.last_pushover_time = 0  # Track when last notification was sent
 
-        # Video recording variables
+        # Video recording variables (optimized for Pi Zero W)
         self.recording = False
         self.recording_start_time = None
-        self.recording_frames = []
-        self.max_recording_duration = 300  # 5 minutes max recording (Pi Zero W limitation)
-        self.recording_quality = 'medium'  # low, medium, high
+        self.recording_thread = None
+        self.recording_temp_dir = None
+        self.max_recording_duration = 120  # 2 minutes max for Pi Zero W
+        self.recording_frame_interval = 2.0  # Capture every 2 seconds for ultra-light recording
 
         # System monitoring variables
         self.system_monitor_enabled = True
@@ -207,17 +208,7 @@ class CameraStreamer:
                 if motion_detected:
                     self.save_motion_image(frame_bytes)
 
-                # Add frame to recording if recording is active
-                if self.recording:
-                    # Limit recording duration for Pi Zero W
-                    if time.time() - self.recording_start_time < self.max_recording_duration:
-                        # Store every 3rd frame to reduce memory usage on Pi Zero W
-                        if len(self.recording_frames) % 3 == 0:
-                            self.recording_frames.append(frame_bytes)
-                    else:
-                        # Auto-stop recording after max duration
-                        logger.info(f"Auto-stopping recording after {self.max_recording_duration} seconds")
-                        self.stop_recording()
+                # Recording is handled separately to avoid blocking main capture loop
 
                 # Update shared frame data
                 with self.condition:
@@ -390,42 +381,55 @@ class CameraStreamer:
             return False
 
     def start_recording(self):
-        """Start video recording"""
+        """Start video recording (optimized for Pi Zero W)"""
         if self.recording:
             return {"status": "error", "message": "Recording already in progress"}
 
         try:
+            import tempfile
+            import threading
+
+            # Create temporary directory for recording
+            self.recording_temp_dir = tempfile.mkdtemp(prefix="camera_rec_")
             self.recording = True
             self.recording_start_time = time.time()
-            self.recording_frames = []
 
-            logger.info("🎥 Started video recording")
+            # Start recording in separate thread to avoid blocking
+            self.recording_thread = threading.Thread(target=self._record_frames, daemon=True)
+            self.recording_thread.start()
+
+            logger.info("🎥 Started lightweight video recording")
             return {"status": "success", "message": "Recording started"}
 
         except Exception as e:
             self.recording = False
+            if self.recording_temp_dir:
+                import shutil
+                shutil.rmtree(self.recording_temp_dir, ignore_errors=True)
             error_msg = f"Failed to start recording: {e}"
             logger.error(error_msg)
             return {"status": "error", "message": error_msg}
 
     def stop_recording(self):
-        """Stop video recording and save to file"""
+        """Stop video recording and save to file (optimized for Pi Zero W)"""
         if not self.recording:
             return {"status": "error", "message": "No recording in progress"}
 
         try:
+            # Signal recording to stop
             self.recording = False
             recording_duration = time.time() - self.recording_start_time
 
-            if len(self.recording_frames) == 0:
-                return {"status": "error", "message": "No frames recorded"}
+            # Wait for recording thread to finish (with timeout)
+            if self.recording_thread and self.recording_thread.is_alive():
+                self.recording_thread.join(timeout=5)
 
             # Generate filename with timestamp
             timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(self.recording_start_time))
             filename = f"recording_{timestamp}.mp4"
 
-            # Create video from frames (simplified for Pi Zero W)
-            video_data = self.create_video_from_frames()
+            # Create video from saved frames
+            video_data = self.create_video_from_temp_files()
 
             if video_data:
                 # Upload to OwnCloud if enabled
@@ -436,8 +440,7 @@ class CameraStreamer:
                         return {
                             "status": "success",
                             "message": f"Recording saved: {filename}",
-                            "duration": recording_duration,
-                            "frames": len(self.recording_frames)
+                            "duration": recording_duration
                         }
                     else:
                         return {"status": "error", "message": "Failed to upload recording"}
@@ -446,8 +449,7 @@ class CameraStreamer:
                     return {
                         "status": "success",
                         "message": "Recording completed (upload disabled)",
-                        "duration": recording_duration,
-                        "frames": len(self.recording_frames)
+                        "duration": recording_duration
                     }
             else:
                 return {"status": "error", "message": "Failed to create video file"}
@@ -458,66 +460,125 @@ class CameraStreamer:
             logger.error(error_msg)
             return {"status": "error", "message": error_msg}
         finally:
-            # Clean up
-            self.recording_frames = []
+            # Clean up temporary directory
+            if self.recording_temp_dir:
+                import shutil
+                shutil.rmtree(self.recording_temp_dir, ignore_errors=True)
+                self.recording_temp_dir = None
 
-    def create_video_from_frames(self):
-        """Create MP4 video from recorded frames (optimized for Pi Zero W)"""
+    def _record_frames(self):
+        """Background thread to capture frames for recording (ultra-lightweight)"""
+        import os
+        frame_count = 0
+        last_capture_time = 0
+
+        logger.info("Recording thread started")
+
+        while self.recording:
+            try:
+                current_time = time.time()
+
+                # Check if we've exceeded max duration
+                if current_time - self.recording_start_time > self.max_recording_duration:
+                    logger.info(f"Auto-stopping recording after {self.max_recording_duration} seconds")
+                    self.recording = False
+                    break
+
+                # Only capture frames at specified interval
+                if current_time - last_capture_time >= self.recording_frame_interval:
+                    try:
+                        # Capture frame directly to file (no memory storage)
+                        frame_path = os.path.join(self.recording_temp_dir, f"frame_{frame_count:04d}.jpg")
+                        self.picam2.capture_file(frame_path)
+                        frame_count += 1
+                        last_capture_time = current_time
+
+                        if frame_count % 10 == 0:  # Log every 10 frames
+                            logger.debug(f"Captured {frame_count} frames")
+
+                    except Exception as e:
+                        logger.warning(f"Failed to capture frame {frame_count}: {e}")
+
+                # Short sleep to prevent excessive CPU usage
+                time.sleep(0.1)
+
+            except Exception as e:
+                logger.error(f"Error in recording thread: {e}")
+                break
+
+        logger.info(f"Recording thread finished. Captured {frame_count} frames")
+
+    def create_video_from_temp_files(self):
+        """Create MP4 video from temporary frame files (ultra-fast for Pi Zero W)"""
         try:
-            import tempfile
             import os
+            import glob
 
-            if not self.recording_frames:
+            if not self.recording_temp_dir or not os.path.exists(self.recording_temp_dir):
                 return None
 
-            # Create temporary directory for frames
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Save frames as temporary images
-                frame_files = []
-                for i, frame_data in enumerate(self.recording_frames):
-                    frame_path = os.path.join(temp_dir, f"frame_{i:04d}.jpg")
-                    with open(frame_path, 'wb') as f:
-                        f.write(frame_data)
-                    frame_files.append(frame_path)
+            # Find all frame files
+            frame_files = sorted(glob.glob(os.path.join(self.recording_temp_dir, "frame_*.jpg")))
 
-                # Use ffmpeg to create video (simple approach for Pi Zero W)
-                output_path = os.path.join(temp_dir, "output.mp4")
+            if len(frame_files) == 0:
+                logger.warning("No frame files found for video creation")
+                return None
 
-                # Simple ffmpeg command optimized for Pi Zero W
-                ffmpeg_cmd = [
-                    'ffmpeg', '-y',  # Overwrite output
-                    '-framerate', '5',  # Low framerate for Pi Zero W
-                    '-i', os.path.join(temp_dir, 'frame_%04d.jpg'),
-                    '-c:v', 'libx264',  # H.264 codec
-                    '-preset', 'ultrafast',  # Fastest encoding for Pi Zero W
-                    '-crf', '28',  # Reasonable quality/size balance
-                    '-pix_fmt', 'yuv420p',
-                    output_path
-                ]
+            logger.info(f"Creating video from {len(frame_files)} frames")
 
-                result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=60)
+            # Output path
+            output_path = os.path.join(self.recording_temp_dir, "output.mp4")
 
-                if result.returncode == 0 and os.path.exists(output_path):
-                    # Read the video file
-                    with open(output_path, 'rb') as f:
-                        video_data = f.read()
-                    return video_data
-                else:
-                    logger.error(f"FFmpeg failed: {result.stderr}")
-                    return None
+            # Ultra-simple ffmpeg command for Pi Zero W (minimal processing)
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',  # Overwrite output
+                '-framerate', '0.5',  # Very slow framerate (1 frame per 2 seconds)
+                '-i', os.path.join(self.recording_temp_dir, 'frame_%04d.jpg'),
+                '-c:v', 'libx264',  # H.264 codec
+                '-preset', 'ultrafast',  # Fastest encoding
+                '-crf', '35',  # Lower quality for smaller files
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',  # Optimize for streaming
+                output_path
+            ]
+
+            # Run ffmpeg with longer timeout
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=120)
+
+            if result.returncode == 0 and os.path.exists(output_path):
+                # Read the video file
+                with open(output_path, 'rb') as f:
+                    video_data = f.read()
+                logger.info(f"Video created successfully: {len(video_data)} bytes")
+                return video_data
+            else:
+                logger.error(f"FFmpeg failed: {result.stderr}")
+                return None
 
         except Exception as e:
             logger.error(f"Error creating video: {e}")
             return None
 
     def get_recording_status(self):
-        """Get current recording status"""
-        if self.recording:
+        """Get current recording status (lightweight)"""
+        if self.recording and self.recording_start_time:
             duration = time.time() - self.recording_start_time
+
+            # Count frames from temp directory if available
+            frame_count = 0
+            if self.recording_temp_dir:
+                try:
+                    import os
+                    import glob
+                    frame_files = glob.glob(os.path.join(self.recording_temp_dir, "frame_*.jpg"))
+                    frame_count = len(frame_files)
+                except:
+                    frame_count = 0
+
             return {
                 'recording': True,
                 'duration': duration,
-                'frames': len(self.recording_frames),
+                'frames': frame_count,
                 'max_duration': self.max_recording_duration
             }
         else:
@@ -890,9 +951,9 @@ HTML_TEMPLATE = """
             // Wait for page to load before updating status
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('Page loaded, starting status updates');
-                // Update status immediately and then every 15 seconds (reduced for Pi Zero W)
+                // Update status immediately and then every 20 seconds (further reduced for Pi Zero W)
                 updateStatus();
-                setInterval(updateStatus, 15000);
+                setInterval(updateStatus, 20000);
             });
             
             // Function to update date and time overlay
@@ -921,22 +982,40 @@ HTML_TEMPLATE = """
 
             // Recording functions
             function startRecording() {
+                // Immediate UI feedback
+                const startBtn = document.getElementById('start-record-btn');
+                const stopBtn = document.getElementById('stop-record-btn');
+                startBtn.disabled = true;
+                startBtn.textContent = 'Starting...';
+
                 fetch('/start-recording', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
                             console.log('Recording started');
+                            stopBtn.disabled = false;
+                            startBtn.textContent = '🔴 Start Recording';
                         } else {
                             alert('Failed to start recording: ' + data.message);
+                            startBtn.disabled = false;
+                            startBtn.textContent = '🔴 Start Recording';
                         }
                     })
                     .catch(error => {
                         console.error('Error starting recording:', error);
                         alert('Error starting recording');
+                        startBtn.disabled = false;
+                        startBtn.textContent = '🔴 Start Recording';
                     });
             }
 
             function stopRecording() {
+                // Immediate UI feedback
+                const startBtn = document.getElementById('start-record-btn');
+                const stopBtn = document.getElementById('stop-record-btn');
+                stopBtn.disabled = true;
+                stopBtn.textContent = 'Stopping...';
+
                 fetch('/stop-recording', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
@@ -945,10 +1024,18 @@ HTML_TEMPLATE = """
                         } else {
                             alert('Failed to stop recording: ' + data.message);
                         }
+                        // Reset UI
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                        stopBtn.textContent = '⏹️ Stop Recording';
                     })
                     .catch(error => {
                         console.error('Error stopping recording:', error);
                         alert('Error stopping recording');
+                        // Reset UI
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                        stopBtn.textContent = '⏹️ Stop Recording';
                     });
             }
 
