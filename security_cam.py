@@ -748,10 +748,10 @@ HTML_TEMPLATE = """
             background-color: #A8192A;
         }
         .record-button.recording:hover:not(:disabled) {
-            background-color: #343a40;
+            background-color: #70111C;
         }
         .record-button.processing {
-            background-color: #6c757d;
+            background-color: #A8192A;
         }
         .recording-status {
             background-color: #fff3cd;
