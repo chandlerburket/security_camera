@@ -763,7 +763,7 @@ HTML_TEMPLATE = """
             text-align: center;
         }
         .recording-status.active {
-            background-color: #d1ecf1;
+            background-color: #3A4142;
             border-color: #bee5eb;
             color: #0c5460;
         }
