@@ -739,15 +739,19 @@ HTML_TEMPLATE = """
         }
         .record-button {
             background-color: #dc3545;
+            transition: background-color 0.3s ease;
         }
         .record-button:hover:not(:disabled) {
             background-color: #c82333;
         }
-        .stop-button {
+        .record-button.recording {
             background-color: #28a745;
         }
-        .stop-button:hover:not(:disabled) {
+        .record-button.recording:hover:not(:disabled) {
             background-color: #218838;
+        }
+        .record-button.processing {
+            background-color: #6c757d;
         }
         .recording-status {
             background-color: #fff3cd;
@@ -778,8 +782,7 @@ HTML_TEMPLATE = """
 
         <!-- Recording Controls -->
         <div class="recording-controls">
-            <button id="start-record-btn" class="record-button" onclick="startRecording()">🔴 Start Recording</button>
-            <button id="stop-record-btn" class="stop-button" onclick="stopRecording()" disabled>⏹️ Stop Recording</button>
+            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">🔴 Start Recording</button>
         </div>
 
         <div id="recording-status" class="recording-status" style="display: none;">
@@ -981,40 +984,53 @@ HTML_TEMPLATE = """
             }
 
             // Recording functions
+            function toggleRecording() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+                const isRecording = recordBtn.classList.contains('recording');
+
+                if (isRecording) {
+                    stopRecording();
+                } else {
+                    startRecording();
+                }
+            }
+
             function startRecording() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+
                 // Immediate UI feedback
-                const startBtn = document.getElementById('start-record-btn');
-                const stopBtn = document.getElementById('stop-record-btn');
-                startBtn.disabled = true;
-                startBtn.textContent = 'Starting...';
+                recordBtn.disabled = true;
+                recordBtn.classList.add('processing');
+                recordBtn.textContent = '🔄 Starting...';
 
                 fetch('/start-recording', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
                             console.log('Recording started');
-                            stopBtn.disabled = false;
-                            startBtn.textContent = '🔴 Start Recording';
+                            recordBtn.disabled = false;
+                            recordBtn.classList.remove('processing');
+                            recordBtn.classList.add('recording');
+                            recordBtn.textContent = '⏹️ Stop Recording';
                         } else {
                             alert('Failed to start recording: ' + data.message);
-                            startBtn.disabled = false;
-                            startBtn.textContent = '🔴 Start Recording';
+                            resetRecordButton();
                         }
                     })
                     .catch(error => {
                         console.error('Error starting recording:', error);
                         alert('Error starting recording');
-                        startBtn.disabled = false;
-                        startBtn.textContent = '🔴 Start Recording';
+                        resetRecordButton();
                     });
             }
 
             function stopRecording() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+
                 // Immediate UI feedback
-                const startBtn = document.getElementById('start-record-btn');
-                const stopBtn = document.getElementById('stop-record-btn');
-                stopBtn.disabled = true;
-                stopBtn.textContent = 'Stopping...';
+                recordBtn.disabled = true;
+                recordBtn.classList.add('processing');
+                recordBtn.textContent = '🔄 Stopping...';
 
                 fetch('/stop-recording', { method: 'POST' })
                     .then(response => response.json())
@@ -1024,30 +1040,34 @@ HTML_TEMPLATE = """
                         } else {
                             alert('Failed to stop recording: ' + data.message);
                         }
-                        // Reset UI
-                        startBtn.disabled = false;
-                        stopBtn.disabled = true;
-                        stopBtn.textContent = '⏹️ Stop Recording';
+                        resetRecordButton();
                     })
                     .catch(error => {
                         console.error('Error stopping recording:', error);
                         alert('Error stopping recording');
-                        // Reset UI
-                        startBtn.disabled = false;
-                        stopBtn.disabled = true;
-                        stopBtn.textContent = '⏹️ Stop Recording';
+                        resetRecordButton();
                     });
             }
 
+            function resetRecordButton() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+                recordBtn.disabled = false;
+                recordBtn.classList.remove('recording', 'processing');
+                recordBtn.textContent = '🔴 Start Recording';
+            }
+
             function updateRecordingUI(isRecording, duration = 0) {
-                const startBtn = document.getElementById('start-record-btn');
-                const stopBtn = document.getElementById('stop-record-btn');
+                const recordBtn = document.getElementById('record-toggle-btn');
                 const statusDiv = document.getElementById('recording-status');
                 const statusText = document.getElementById('recording-text');
 
                 if (isRecording) {
-                    startBtn.disabled = true;
-                    stopBtn.disabled = false;
+                    // Don't update button if it's in processing state
+                    if (!recordBtn.classList.contains('processing')) {
+                        recordBtn.classList.add('recording');
+                        recordBtn.textContent = '⏹️ Stop Recording';
+                    }
+
                     statusDiv.style.display = 'block';
                     statusDiv.classList.add('active');
 
@@ -1055,8 +1075,12 @@ HTML_TEMPLATE = """
                     const seconds = Math.floor(duration % 60);
                     statusText.textContent = `Recording: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                 } else {
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
+                    // Don't update button if it's in processing state
+                    if (!recordBtn.classList.contains('processing')) {
+                        recordBtn.classList.remove('recording');
+                        recordBtn.textContent = '🔴 Start Recording';
+                    }
+
                     statusDiv.style.display = 'none';
                     statusDiv.classList.remove('active');
                 }
