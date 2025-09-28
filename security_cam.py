@@ -738,11 +738,11 @@ HTML_TEMPLATE = """
             cursor: not-allowed;
         }
         .record-button {
-            background-color: #495057;
+            background-color: #0F6925;
             transition: background-color 0.3s ease;
         }
         .record-button:hover:not(:disabled) {
-            background-color: #343a40;
+            background-color: #094717;
         }
         .record-button.recording {
             background-color: #A8192A;
