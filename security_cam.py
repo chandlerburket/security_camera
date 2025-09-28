@@ -738,17 +738,17 @@ HTML_TEMPLATE = """
             cursor: not-allowed;
         }
         .record-button {
-            background-color: #dc3545;
+            background-color: #495057;
             transition: background-color 0.3s ease;
         }
         .record-button:hover:not(:disabled) {
-            background-color: #c82333;
+            background-color: #343a40;
         }
         .record-button.recording {
-            background-color: #28a745;
+            background-color: #495057;
         }
         .record-button.recording:hover:not(:disabled) {
-            background-color: #218838;
+            background-color: #343a40;
         }
         .record-button.processing {
             background-color: #6c757d;
@@ -782,7 +782,7 @@ HTML_TEMPLATE = """
 
         <!-- Recording Controls -->
         <div class="recording-controls">
-            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">🔴 Start Recording</button>
+            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">▶️ Start Recording</button>
         </div>
 
         <div id="recording-status" class="recording-status" style="display: none;">
@@ -1053,7 +1053,7 @@ HTML_TEMPLATE = """
                 const recordBtn = document.getElementById('record-toggle-btn');
                 recordBtn.disabled = false;
                 recordBtn.classList.remove('recording', 'processing');
-                recordBtn.textContent = '🔴 Start Recording';
+                recordBtn.textContent = '▶️ Start Recording';
             }
 
             function updateRecordingUI(isRecording, duration = 0) {
@@ -1078,7 +1078,7 @@ HTML_TEMPLATE = """
                     // Don't update button if it's in processing state
                     if (!recordBtn.classList.contains('processing')) {
                         recordBtn.classList.remove('recording');
-                        recordBtn.textContent = '🔴 Start Recording';
+                        recordBtn.textContent = '▶️ Start Recording';
                     }
 
                     statusDiv.style.display = 'none';
