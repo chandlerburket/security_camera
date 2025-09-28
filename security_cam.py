@@ -745,7 +745,7 @@ HTML_TEMPLATE = """
             background-color: #343a40;
         }
         .record-button.recording {
-            background-color: #495057;
+            background-color: #A8192A;
         }
         .record-button.recording:hover:not(:disabled) {
             background-color: #343a40;
@@ -782,7 +782,7 @@ HTML_TEMPLATE = """
 
         <!-- Recording Controls -->
         <div class="recording-controls">
-            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">▶️ Start Recording</button>
+            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">Start Recording</button>
         </div>
 
         <div id="recording-status" class="recording-status" style="display: none;">
@@ -1001,7 +1001,7 @@ HTML_TEMPLATE = """
                 // Immediate UI feedback
                 recordBtn.disabled = true;
                 recordBtn.classList.add('processing');
-                recordBtn.textContent = '🔄 Starting...';
+                recordBtn.textContent = 'Starting...';
 
                 fetch('/start-recording', { method: 'POST' })
                     .then(response => response.json())
@@ -1011,7 +1011,7 @@ HTML_TEMPLATE = """
                             recordBtn.disabled = false;
                             recordBtn.classList.remove('processing');
                             recordBtn.classList.add('recording');
-                            recordBtn.textContent = '⏹️ Stop Recording';
+                            recordBtn.textContent = 'Stop Recording';
                         } else {
                             alert('Failed to start recording: ' + data.message);
                             resetRecordButton();
@@ -1030,7 +1030,7 @@ HTML_TEMPLATE = """
                 // Immediate UI feedback
                 recordBtn.disabled = true;
                 recordBtn.classList.add('processing');
-                recordBtn.textContent = '🔄 Stopping...';
+                recordBtn.textContent = 'Stopping...';
 
                 fetch('/stop-recording', { method: 'POST' })
                     .then(response => response.json())
@@ -1053,7 +1053,7 @@ HTML_TEMPLATE = """
                 const recordBtn = document.getElementById('record-toggle-btn');
                 recordBtn.disabled = false;
                 recordBtn.classList.remove('recording', 'processing');
-                recordBtn.textContent = '▶️ Start Recording';
+                recordBtn.textContent = 'Start Recording';
             }
 
             function updateRecordingUI(isRecording, duration = 0) {
@@ -1065,7 +1065,7 @@ HTML_TEMPLATE = """
                     // Don't update button if it's in processing state
                     if (!recordBtn.classList.contains('processing')) {
                         recordBtn.classList.add('recording');
-                        recordBtn.textContent = '⏹️ Stop Recording';
+                        recordBtn.textContent = 'Stop Recording';
                     }
 
                     statusDiv.style.display = 'block';
@@ -1078,7 +1078,7 @@ HTML_TEMPLATE = """
                     // Don't update button if it's in processing state
                     if (!recordBtn.classList.contains('processing')) {
                         recordBtn.classList.remove('recording');
-                        recordBtn.textContent = '▶️ Start Recording';
+                        recordBtn.textContent = 'Start Recording';
                     }
 
                     statusDiv.style.display = 'none';
