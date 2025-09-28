@@ -244,34 +244,42 @@ class CameraStreamer:
             'last_motion_time': self.last_motion_time
         }
 
-    def upload_to_owncloud(self, image_data, filename):
-        """Upload image data to OwnCloud server via WebDAV"""
+    def upload_to_owncloud(self, data, filename, folder_type='image'):
+        """Upload data to OwnCloud server via WebDAV"""
         if not self.owncloud_enabled:
             return False
 
         try:
+            # Choose folder based on type
+            if folder_type == 'video':
+                folder = self.owncloud_video_folder
+                content_type = 'video/mp4'
+            else:
+                folder = self.owncloud_folder
+                content_type = 'image/jpeg'
+
             # Construct the full WebDAV URL
-            webdav_url = f"{self.owncloud_url}/remote.php/webdav{self.owncloud_folder}/{filename}"
+            webdav_url = f"{self.owncloud_url}/remote.php/webdav{folder}/{filename}"
 
             # Prepare authentication
             auth = HTTPBasicAuth(self.owncloud_username, self.owncloud_password)
 
             # Set headers for WebDAV upload
             headers = {
-                'Content-Type': 'image/jpeg',
+                'Content-Type': content_type,
             }
 
             # Upload the file using PUT method
             response = requests.put(
                 webdav_url,
-                data=image_data,
+                data=data,
                 auth=auth,
                 headers=headers,
-                timeout=10
+                timeout=30  # Longer timeout for videos
             )
 
             if response.status_code in [200, 201, 204]:
-                logger.info(f"✅ Successfully uploaded {filename} to OwnCloud")
+                logger.info(f"✅ Successfully uploaded {filename} to OwnCloud ({folder_type})")
                 return True
             else:
                 logger.error(f"❌ Failed to upload {filename}. Status: {response.status_code}, Response: {response.text}")
