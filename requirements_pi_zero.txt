@@ -15,6 +15,12 @@ flask
 # For notification features (optional - can be disabled)
 requests
 
+# For system monitoring
+psutil
+
+# For video recording (install via system package)
+# sudo apt install ffmpeg
+
 # System monitoring
 # Note: iwconfig should be available on most Raspberry Pi OS installations
 
