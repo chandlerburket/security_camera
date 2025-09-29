@@ -69,6 +69,7 @@ class CameraStreamer:
         self.owncloud_username = "camera_user"  # Your OwnCloud username
         self.owncloud_password = "your_password"  # Your OwnCloud password
         self.owncloud_folder = "/motion_captures"  # Folder to save images
+        self.owncloud_video_folder = "/recordings"  # Folder to save videos
         self.save_interval = 10  # Increased interval for Pi Zero W to reduce I/O load
 
         # Pushover configuration - update these with your Pushover credentials
@@ -78,15 +79,34 @@ class CameraStreamer:
         self.pushover_notify_interval = 120  # Increased interval for Pi Zero W
         self.last_pushover_time = 0  # Track when last notification was sent
 
-    def configure_owncloud(self, url, username, password, folder="/motion_captures", enabled=True):
-        """Configure OwnCloud settings for image uploads"""
+        # Video recording variables (optimized for Pi Zero W)
+        self.recording = False
+        self.recording_start_time = None
+        self.recording_thread = None
+        self.recording_temp_dir = None
+        self.max_recording_duration = 120  # 2 minutes max for Pi Zero W
+        self.recording_frame_interval = 2.0  # Capture every 2 seconds for ultra-light recording
+
+        # System monitoring variables
+        self.system_monitor_enabled = True
+        self.last_health_check = 0
+        self.health_check_interval = 300  # Check system health every 5 minutes
+        self.error_count = 0
+        self.max_errors_before_notification = 3
+        self.last_error_notification = 0
+        self.system_start_time = time.time()
+        self.startup_notification_sent = False
+
+    def configure_owncloud(self, url, username, password, folder="/motion_captures", video_folder="/recordings", enabled=True):
+        """Configure OwnCloud settings for image and video uploads"""
         self.owncloud_url = url.rstrip('/')  # Remove trailing slash
         self.owncloud_username = username
         self.owncloud_password = password
         self.owncloud_folder = folder if folder.startswith('/') else f'/{folder}'
+        self.owncloud_video_folder = video_folder if video_folder.startswith('/') else f'/{video_folder}'
         self.owncloud_enabled = enabled
 
-        logger.info(f"🔧 OwnCloud configured: {url}{folder} (enabled: {enabled})")
+        logger.info(f"🔧 OwnCloud configured: {url} - Images: {folder}, Videos: {video_folder} (enabled: {enabled})")
 
     def configure_pushover(self, user_key, api_token, enabled=True, notify_interval=60):
         """Configure Pushover settings for motion notifications"""
@@ -188,6 +208,8 @@ class CameraStreamer:
                 if motion_detected:
                     self.save_motion_image(frame_bytes)
 
+                # Recording is handled separately to avoid blocking main capture loop
+
                 # Update shared frame data
                 with self.condition:
                     self.frame = frame_bytes
@@ -213,34 +235,42 @@ class CameraStreamer:
             'last_motion_time': self.last_motion_time
         }
 
-    def upload_to_owncloud(self, image_data, filename):
-        """Upload image data to OwnCloud server via WebDAV"""
+    def upload_to_owncloud(self, data, filename, folder_type='image'):
+        """Upload data to OwnCloud server via WebDAV"""
         if not self.owncloud_enabled:
             return False
 
         try:
+            # Choose folder based on type
+            if folder_type == 'video':
+                folder = self.owncloud_video_folder
+                content_type = 'video/mp4'
+            else:
+                folder = self.owncloud_folder
+                content_type = 'image/jpeg'
+
             # Construct the full WebDAV URL
-            webdav_url = f"{self.owncloud_url}/remote.php/webdav{self.owncloud_folder}/{filename}"
+            webdav_url = f"{self.owncloud_url}/remote.php/webdav{folder}/{filename}"
 
             # Prepare authentication
             auth = HTTPBasicAuth(self.owncloud_username, self.owncloud_password)
 
             # Set headers for WebDAV upload
             headers = {
-                'Content-Type': 'image/jpeg',
+                'Content-Type': content_type,
             }
 
             # Upload the file using PUT method
             response = requests.put(
                 webdav_url,
-                data=image_data,
+                data=data,
                 auth=auth,
                 headers=headers,
-                timeout=10
+                timeout=30  # Longer timeout for videos
             )
 
             if response.status_code in [200, 201, 204]:
-                logger.info(f"✅ Successfully uploaded {filename} to OwnCloud")
+                logger.info(f"✅ Successfully uploaded {filename} to OwnCloud ({folder_type})")
                 return True
             else:
                 logger.error(f"❌ Failed to upload {filename}. Status: {response.status_code}, Response: {response.text}")
@@ -333,7 +363,7 @@ class CameraStreamer:
 
             # Upload to OwnCloud if enabled
             if self.owncloud_enabled:
-                success = self.upload_to_owncloud(frame_bytes, filename)
+                success = self.upload_to_owncloud(frame_bytes, filename, 'image')
                 if success:
                     self.last_save_time = current_time
                     logger.info(f"📸 Motion detected - image saved: {filename}")
@@ -349,6 +379,210 @@ class CameraStreamer:
         except Exception as e:
             logger.error(f"❌ Error saving motion image: {e}")
             return False
+
+    def start_recording(self):
+        """Start video recording (optimized for Pi Zero W)"""
+        if self.recording:
+            return {"status": "error", "message": "Recording already in progress"}
+
+        try:
+            import tempfile
+            import threading
+
+            # Create temporary directory for recording
+            self.recording_temp_dir = tempfile.mkdtemp(prefix="camera_rec_")
+            self.recording = True
+            self.recording_start_time = time.time()
+
+            # Start recording in separate thread to avoid blocking
+            self.recording_thread = threading.Thread(target=self._record_frames, daemon=True)
+            self.recording_thread.start()
+
+            logger.info("🎥 Started lightweight video recording")
+            return {"status": "success", "message": "Recording started"}
+
+        except Exception as e:
+            self.recording = False
+            if self.recording_temp_dir:
+                import shutil
+                shutil.rmtree(self.recording_temp_dir, ignore_errors=True)
+            error_msg = f"Failed to start recording: {e}"
+            logger.error(error_msg)
+            return {"status": "error", "message": error_msg}
+
+    def stop_recording(self):
+        """Stop video recording and save to file (optimized for Pi Zero W)"""
+        if not self.recording:
+            return {"status": "error", "message": "No recording in progress"}
+
+        try:
+            # Signal recording to stop
+            self.recording = False
+            recording_duration = time.time() - self.recording_start_time
+
+            # Wait for recording thread to finish (with timeout)
+            if self.recording_thread and self.recording_thread.is_alive():
+                self.recording_thread.join(timeout=5)
+
+            # Generate filename with timestamp
+            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(self.recording_start_time))
+            filename = f"recording_{timestamp}.mp4"
+
+            # Create video from saved frames
+            video_data = self.create_video_from_temp_files()
+
+            if video_data:
+                # Upload to OwnCloud if enabled
+                if self.owncloud_enabled:
+                    success = self.upload_to_owncloud(video_data, filename, 'video')
+                    if success:
+                        logger.info(f"🎥 Recording saved: {filename} (duration: {recording_duration:.1f}s)")
+                        return {
+                            "status": "success",
+                            "message": f"Recording saved: {filename}",
+                            "duration": recording_duration
+                        }
+                    else:
+                        return {"status": "error", "message": "Failed to upload recording"}
+                else:
+                    logger.info(f"🎥 Recording completed but OwnCloud upload disabled (duration: {recording_duration:.1f}s)")
+                    return {
+                        "status": "success",
+                        "message": "Recording completed (upload disabled)",
+                        "duration": recording_duration
+                    }
+            else:
+                return {"status": "error", "message": "Failed to create video file"}
+
+        except Exception as e:
+            self.recording = False
+            error_msg = f"Failed to stop recording: {e}"
+            logger.error(error_msg)
+            return {"status": "error", "message": error_msg}
+        finally:
+            # Clean up temporary directory
+            if self.recording_temp_dir:
+                import shutil
+                shutil.rmtree(self.recording_temp_dir, ignore_errors=True)
+                self.recording_temp_dir = None
+
+    def _record_frames(self):
+        """Background thread to capture frames for recording (ultra-lightweight)"""
+        import os
+        frame_count = 0
+        last_capture_time = 0
+
+        logger.info("Recording thread started")
+
+        while self.recording:
+            try:
+                current_time = time.time()
+
+                # Check if we've exceeded max duration
+                if current_time - self.recording_start_time > self.max_recording_duration:
+                    logger.info(f"Auto-stopping recording after {self.max_recording_duration} seconds")
+                    self.recording = False
+                    break
+
+                # Only capture frames at specified interval
+                if current_time - last_capture_time >= self.recording_frame_interval:
+                    try:
+                        # Capture frame directly to file (no memory storage)
+                        frame_path = os.path.join(self.recording_temp_dir, f"frame_{frame_count:04d}.jpg")
+                        self.picam2.capture_file(frame_path)
+                        frame_count += 1
+                        last_capture_time = current_time
+
+                        if frame_count % 10 == 0:  # Log every 10 frames
+                            logger.debug(f"Captured {frame_count} frames")
+
+                    except Exception as e:
+                        logger.warning(f"Failed to capture frame {frame_count}: {e}")
+
+                # Short sleep to prevent excessive CPU usage
+                time.sleep(0.1)
+
+            except Exception as e:
+                logger.error(f"Error in recording thread: {e}")
+                break
+
+        logger.info(f"Recording thread finished. Captured {frame_count} frames")
+
+    def create_video_from_temp_files(self):
+        """Create MP4 video from temporary frame files (ultra-fast for Pi Zero W)"""
+        try:
+            import os
+            import glob
+
+            if not self.recording_temp_dir or not os.path.exists(self.recording_temp_dir):
+                return None
+
+            # Find all frame files
+            frame_files = sorted(glob.glob(os.path.join(self.recording_temp_dir, "frame_*.jpg")))
+
+            if len(frame_files) == 0:
+                logger.warning("No frame files found for video creation")
+                return None
+
+            logger.info(f"Creating video from {len(frame_files)} frames")
+
+            # Output path
+            output_path = os.path.join(self.recording_temp_dir, "output.mp4")
+
+            # Ultra-simple ffmpeg command for Pi Zero W (minimal processing)
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',  # Overwrite output
+                '-framerate', '0.5',  # Very slow framerate (1 frame per 2 seconds)
+                '-i', os.path.join(self.recording_temp_dir, 'frame_%04d.jpg'),
+                '-c:v', 'libx264',  # H.264 codec
+                '-preset', 'ultrafast',  # Fastest encoding
+                '-crf', '35',  # Lower quality for smaller files
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',  # Optimize for streaming
+                output_path
+            ]
+
+            # Run ffmpeg with longer timeout
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=120)
+
+            if result.returncode == 0 and os.path.exists(output_path):
+                # Read the video file
+                with open(output_path, 'rb') as f:
+                    video_data = f.read()
+                logger.info(f"Video created successfully: {len(video_data)} bytes")
+                return video_data
+            else:
+                logger.error(f"FFmpeg failed: {result.stderr}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating video: {e}")
+            return None
+
+    def get_recording_status(self):
+        """Get current recording status (lightweight)"""
+        if self.recording and self.recording_start_time:
+            duration = time.time() - self.recording_start_time
+
+            # Count frames from temp directory if available
+            frame_count = 0
+            if self.recording_temp_dir:
+                try:
+                    import os
+                    import glob
+                    frame_files = glob.glob(os.path.join(self.recording_temp_dir, "frame_*.jpg"))
+                    frame_count = len(frame_files)
+                except:
+                    frame_count = 0
+
+            return {
+                'recording': True,
+                'duration': duration,
+                'frames': frame_count,
+                'max_duration': self.max_recording_duration
+            }
+        else:
+            return {'recording': False}
 
     def stop(self):
         """Stop the camera and cleanup resources"""
@@ -478,6 +712,13 @@ HTML_TEMPLATE = """
         .controls {
             margin-top: 15px;
         }
+        .recording-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
         button {
             padding: 10px 20px;
             margin: 5px;
@@ -486,9 +727,45 @@ HTML_TEMPLATE = """
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 14px;
+            min-width: 120px;
         }
         button:hover {
             background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .record-button {
+            background-color: #09454F;
+            transition: background-color 0.3s ease;
+        }
+        .record-button:hover:not(:disabled) {
+            background-color: #073038;
+        }
+        .record-button.recording {
+            background-color: #A8192A;
+        }
+        .record-button.recording:hover:not(:disabled) {
+            background-color: #70111C;
+        }
+        .record-button.processing {
+            background-color: #A8192A;
+        }
+        .recording-status {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            color: #856404;
+            text-align: center;
+        }
+        .recording-status.active {
+            background-color: #3A4142;
+            border-color: #bee5eb;
+            color: #0c5460;
         }
     </style>
 </head>
@@ -503,11 +780,19 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
+        <div id="recording-status" class="recording-status" style="display: none;">
+            <span id="recording-text">Recording: 00:00</span>
+        </div>
+
         <div class="info">
-            <p style="display: flex; justify-content: space-between; align-items: center;"><strong>Camera Status:</strong> <span id="camera-status" style="width: 12px; height: 12px; border-radius: 50%; background-color: #4CAF50; display: inline-block;"></span></p>
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
+        </div>
+
+        <!-- Recording Controls -->
+        <div class="recording-controls">
+            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">Start Recording</button>
         </div>
         
         <script>
@@ -609,7 +894,29 @@ HTML_TEMPLATE = """
                             signalEl.textContent = signalText;
                             signalEl.className = signalClass;
                         }
-                        
+
+                        // Update recording status
+                        const recordStatusEl = document.getElementById('record-status');
+                        if (recordStatusEl && data.recording_status) {
+                            if (data.recording_status.recording) {
+                                recordStatusEl.style.backgroundColor = '#f44336'; // Red for recording
+                                updateRecordingUI(true, data.recording_status.duration);
+                            } else {
+                                recordStatusEl.style.backgroundColor = '#ddd'; // Gray for not recording
+                                updateRecordingUI(false);
+                            }
+                        }
+
+                        // Update motion detection status
+                        const motionStatusEl = document.getElementById('motion-status');
+                        if (motionStatusEl) {
+                            if (data.motion_detected) {
+                                motionStatusEl.style.backgroundColor = '#ff9800'; // Orange for motion
+                            } else {
+                                motionStatusEl.style.backgroundColor = '#ddd'; // Gray for no motion
+                            }
+                        }
+
                         // Update system info
                         const ipEl = document.getElementById('ip-address');
                         if (ipEl) {
@@ -644,9 +951,9 @@ HTML_TEMPLATE = """
             // Wait for page to load before updating status
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('Page loaded, starting status updates');
-                // Update status immediately and then every 15 seconds (reduced for Pi Zero W)
+                // Update status immediately and then every 20 seconds (further reduced for Pi Zero W)
                 updateStatus();
-                setInterval(updateStatus, 15000);
+                setInterval(updateStatus, 20000);
             });
             
             // Function to update date and time overlay
@@ -670,6 +977,151 @@ HTML_TEMPLATE = """
                 const overlay = document.getElementById('datetime-overlay');
                 if (overlay) {
                     overlay.textContent = dateTimeString;
+                }
+            }
+
+            // Recording functions
+            function toggleRecording() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+                const isRecording = recordBtn.classList.contains('recording');
+
+                if (isRecording) {
+                    stopRecording();
+                } else {
+                    startRecording();
+                }
+            }
+
+            function startRecording() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+
+                // Immediate UI feedback
+                recordBtn.disabled = true;
+                recordBtn.classList.add('processing');
+                recordBtn.textContent = 'Starting...';
+
+                fetch('/start-recording', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            console.log('Recording started');
+                            recordBtn.disabled = false;
+                            recordBtn.classList.remove('processing');
+                            recordBtn.classList.add('recording');
+                            recordBtn.textContent = 'Stop Recording (00:00)';
+                            startRecordingTimer();
+                        } else {
+                            alert('Failed to start recording: ' + data.message);
+                            resetRecordButton();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error starting recording:', error);
+                        alert('Error starting recording');
+                        resetRecordButton();
+                    });
+            }
+
+            function stopRecording() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+
+                // Immediate UI feedback
+                recordBtn.disabled = true;
+                recordBtn.classList.add('processing');
+                recordBtn.textContent = 'Stopping...';
+
+                fetch('/stop-recording', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            alert('Recording saved: ' + data.message);
+                        } else {
+                            alert('Failed to stop recording: ' + data.message);
+                        }
+                        stopRecordingTimer();
+                        resetRecordButton();
+                    })
+                    .catch(error => {
+                        console.error('Error stopping recording:', error);
+                        alert('Error stopping recording');
+                        stopRecordingTimer();
+                        resetRecordButton();
+                    });
+            }
+
+            function resetRecordButton() {
+                const recordBtn = document.getElementById('record-toggle-btn');
+                stopRecordingTimer();
+                recordBtn.disabled = false;
+                recordBtn.classList.remove('recording', 'processing');
+                recordBtn.textContent = 'Start Recording';
+            }
+
+            function updateRecordingUI(isRecording, duration = 0) {
+                const recordBtn = document.getElementById('record-toggle-btn');
+                const statusDiv = document.getElementById('recording-status');
+                const statusText = document.getElementById('recording-text');
+
+                if (isRecording) {
+                    // Don't update button if it's in processing state
+                    if (!recordBtn.classList.contains('processing')) {
+                        recordBtn.classList.add('recording');
+
+                        // Start timer if not already running and we don't have a local timer
+                        if (!recordingStartTime) {
+                            recordingStartTime = Date.now() - (duration * 1000);
+                            if (!recordingTimerInterval) {
+                                recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+                            }
+                        }
+                    }
+
+                    statusDiv.style.display = 'block';
+                    statusDiv.classList.add('active');
+
+                    const minutes = Math.floor(duration / 60);
+                    const seconds = Math.floor(duration % 60);
+                    statusText.textContent = `Recording: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                } else {
+                    // Don't update button if it's in processing state
+                    if (!recordBtn.classList.contains('processing')) {
+                        recordBtn.classList.remove('recording');
+                        recordBtn.textContent = 'Start Recording';
+                        stopRecordingTimer();
+                    }
+
+                    statusDiv.style.display = 'none';
+                    statusDiv.classList.remove('active');
+                }
+            }
+
+            // Recording timer variables
+            let recordingStartTime = null;
+            let recordingTimerInterval = null;
+
+            function startRecordingTimer() {
+                recordingStartTime = Date.now();
+                recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+            }
+
+            function stopRecordingTimer() {
+                if (recordingTimerInterval) {
+                    clearInterval(recordingTimerInterval);
+                    recordingTimerInterval = null;
+                }
+                recordingStartTime = null;
+            }
+
+            function updateRecordingTimer() {
+                if (recordingStartTime && recordingTimerInterval) {
+                    const recordBtn = document.getElementById('record-toggle-btn');
+                    if (recordBtn.classList.contains('recording') && !recordBtn.classList.contains('processing')) {
+                        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                        const minutes = Math.floor(elapsed / 60);
+                        const seconds = elapsed % 60;
+                        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        recordBtn.textContent = `Stop Recording (${timeString})`;
+                    }
                 }
             }
 
@@ -826,6 +1278,7 @@ def status():
         'last_motion_time': motion_status['last_motion_time'],
         'owncloud_enabled': streamer.owncloud_enabled,
         'pushover_enabled': streamer.pushover_enabled,
+        'recording_status': streamer.get_recording_status(),
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
         'wifi_signal_percent': system_info['wifi_signal_percent'],
         'wifi_signal_quality': system_info['wifi_signal_quality'],
@@ -890,6 +1343,32 @@ def test_pushover():
     except Exception as e:
         return {"status": "error", "message": f"Test error: {str(e)}"}
 
+@app.route('/start-recording', methods=['POST'])
+def start_recording():
+    """Start video recording"""
+    try:
+        result = streamer.start_recording()
+        return result
+    except Exception as e:
+        return {"status": "error", "message": f"Error starting recording: {str(e)}"}
+
+@app.route('/stop-recording', methods=['POST'])
+def stop_recording():
+    """Stop video recording"""
+    try:
+        result = streamer.stop_recording()
+        return result
+    except Exception as e:
+        return {"status": "error", "message": f"Error stopping recording: {str(e)}"}
+
+@app.route('/recording-status')
+def recording_status():
+    """Get current recording status"""
+    try:
+        return streamer.get_recording_status()
+    except Exception as e:
+        return {"status": "error", "message": f"Error getting recording status: {str(e)}"}
+
 def main():
     """Main function to start the camera server"""
     print("🎥 Starting Raspberry Pi Camera Web Server...")
@@ -902,6 +1381,7 @@ def main():
             username=OWNCLOUD_CONFIG["username"],
             password=OWNCLOUD_CONFIG["password"],
             folder=OWNCLOUD_CONFIG["folder"],
+            video_folder=OWNCLOUD_CONFIG.get("video_folder", "/recordings"),
             enabled=OWNCLOUD_CONFIG["enabled"]
         )
         streamer.save_interval = OWNCLOUD_CONFIG.get("save_interval", 5)

@@ -24,6 +24,10 @@ OWNCLOUD_CONFIG = {
     # The folder will be created automatically if it doesn't exist
     "folder": "/motion_captures",
 
+    # Folder where video recordings will be saved
+    # The folder will be created automatically if it doesn't exist
+    "video_folder": "/recordings",
+
     # Enable/disable OwnCloud uploads
     "enabled": True,
 
