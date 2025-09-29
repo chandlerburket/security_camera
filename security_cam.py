@@ -738,11 +738,11 @@ HTML_TEMPLATE = """
             cursor: not-allowed;
         }
         .record-button {
-            background-color: #0F6925;
+            background-color: #09454F;
             transition: background-color 0.3s ease;
         }
         .record-button:hover:not(:disabled) {
-            background-color: #094717;
+            background-color: #073038;
         }
         .record-button.recording {
             background-color: #A8192A;
@@ -780,11 +780,6 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- Recording Controls -->
-        <div class="recording-controls">
-            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">Start Recording</button>
-        </div>
-
         <div id="recording-status" class="recording-status" style="display: none;">
             <span id="recording-text">Recording: 00:00</span>
         </div>
@@ -793,6 +788,11 @@ HTML_TEMPLATE = """
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
+        </div>
+
+        <!-- Recording Controls -->
+        <div class="recording-controls">
+            <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">Start Recording</button>
         </div>
         
         <script>
