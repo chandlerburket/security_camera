@@ -963,6 +963,21 @@ HTML_TEMPLATE = """
                 // Update status immediately and then every 20 seconds (further reduced for Pi Zero W)
                 updateStatus();
                 setInterval(updateStatus, 20000);
+
+                // Initialize OwnCloud links on page load with placeholder
+                setTimeout(function() {
+                    console.log('Initializing OwnCloud links...');
+                    const motionLink = document.getElementById('motion-captures-link');
+                    const recordingsLink = document.getElementById('recordings-link');
+                    console.log('Found link elements on init:', motionLink, recordingsLink);
+
+                    if (motionLink && recordingsLink) {
+                        motionLink.textContent = '📸 Motion Captures (Loading...)';
+                        recordingsLink.textContent = '🎥 Video Recordings (Loading...)';
+                        motionLink.style.color = '#6c757d';
+                        recordingsLink.style.color = '#6c757d';
+                    }
+                }, 100);
             });
             
             // Function to update date and time overlay
@@ -1135,10 +1150,19 @@ HTML_TEMPLATE = """
             }
 
             function updateOwnCloudLinks(data) {
+                console.log('Updating OwnCloud links with data:', data);
                 const motionLink = document.getElementById('motion-captures-link');
                 const recordingsLink = document.getElementById('recordings-link');
 
+                console.log('Found elements:', motionLink, recordingsLink);
+
+                if (!motionLink || !recordingsLink) {
+                    console.error('Could not find OwnCloud link elements');
+                    return;
+                }
+
                 if (data.owncloud_enabled && data.owncloud_config) {
+                    console.log('OwnCloud enabled, config:', data.owncloud_config);
                     const baseUrl = data.owncloud_config.url;
                     const motionFolder = data.owncloud_config.folder || '/motion_captures';
                     const videoFolder = data.owncloud_config.video_folder || '/recordings';
@@ -1147,15 +1171,22 @@ HTML_TEMPLATE = """
                     const motionUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(motionFolder)}`;
                     const recordingsUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(videoFolder)}`;
 
+                    console.log('Setting URLs:', motionUrl, recordingsUrl);
+
                     motionLink.href = motionUrl;
                     recordingsLink.href = recordingsUrl;
                     motionLink.style.color = '#17a2b8';
                     recordingsLink.style.color = '#17a2b8';
+                    motionLink.textContent = '📸 Motion Captures';
+                    recordingsLink.textContent = '🎥 Video Recordings';
                 } else {
+                    console.log('OwnCloud disabled or no config');
                     motionLink.href = '#';
                     recordingsLink.href = '#';
                     motionLink.style.color = '#6c757d';
                     recordingsLink.style.color = '#6c757d';
+                    motionLink.textContent = '📸 Motion Captures (OwnCloud disabled)';
+                    recordingsLink.textContent = '🎥 Video Recordings (OwnCloud disabled)';
                 }
             }
 
