@@ -788,7 +788,6 @@ HTML_TEMPLATE = """
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
-            <hr style="margin: 15px 0; border: 1px solid #555;">
             <p><strong>OwnCloud Files:</strong></p>
             <p style="margin-left: 20px;">
                 <a href="#" id="motion-captures-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Motion Captures</a><br>
