@@ -1009,6 +1009,7 @@ HTML_TEMPLATE = """
                             recordBtn.classList.remove('processing');
                             recordBtn.classList.add('recording');
                             recordBtn.textContent = 'Stop Recording (00:00)';
+                            startRecordingTimer();
                         } else {
                             alert('Failed to start recording: ' + data.message);
                             resetRecordButton();
@@ -1037,17 +1038,20 @@ HTML_TEMPLATE = """
                         } else {
                             alert('Failed to stop recording: ' + data.message);
                         }
+                        stopRecordingTimer();
                         resetRecordButton();
                     })
                     .catch(error => {
                         console.error('Error stopping recording:', error);
                         alert('Error stopping recording');
+                        stopRecordingTimer();
                         resetRecordButton();
                     });
             }
 
             function resetRecordButton() {
                 const recordBtn = document.getElementById('record-toggle-btn');
+                stopRecordingTimer();
                 recordBtn.disabled = false;
                 recordBtn.classList.remove('recording', 'processing');
                 recordBtn.textContent = 'Start Recording';
@@ -1063,11 +1067,13 @@ HTML_TEMPLATE = """
                     if (!recordBtn.classList.contains('processing')) {
                         recordBtn.classList.add('recording');
 
-                        // Format duration for button display
-                        const minutes = Math.floor(duration / 60);
-                        const seconds = Math.floor(duration % 60);
-                        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                        recordBtn.textContent = `Stop Recording (${timeString})`;
+                        // Start timer if not already running and we don't have a local timer
+                        if (!recordingStartTime) {
+                            recordingStartTime = Date.now() - (duration * 1000);
+                            if (!recordingTimerInterval) {
+                                recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+                            }
+                        }
                     }
 
                     statusDiv.style.display = 'block';
@@ -1081,10 +1087,41 @@ HTML_TEMPLATE = """
                     if (!recordBtn.classList.contains('processing')) {
                         recordBtn.classList.remove('recording');
                         recordBtn.textContent = 'Start Recording';
+                        stopRecordingTimer();
                     }
 
                     statusDiv.style.display = 'none';
                     statusDiv.classList.remove('active');
+                }
+            }
+
+            // Recording timer variables
+            let recordingStartTime = null;
+            let recordingTimerInterval = null;
+
+            function startRecordingTimer() {
+                recordingStartTime = Date.now();
+                recordingTimerInterval = setInterval(updateRecordingTimer, 1000);
+            }
+
+            function stopRecordingTimer() {
+                if (recordingTimerInterval) {
+                    clearInterval(recordingTimerInterval);
+                    recordingTimerInterval = null;
+                }
+                recordingStartTime = null;
+            }
+
+            function updateRecordingTimer() {
+                if (recordingStartTime && recordingTimerInterval) {
+                    const recordBtn = document.getElementById('record-toggle-btn');
+                    if (recordBtn.classList.contains('recording') && !recordBtn.classList.contains('processing')) {
+                        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                        const minutes = Math.floor(elapsed / 60);
+                        const seconds = elapsed % 60;
+                        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        recordBtn.textContent = `Stop Recording (${timeString})`;
+                    }
                 }
             }
 
