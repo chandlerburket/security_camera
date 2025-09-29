@@ -957,28 +957,41 @@ HTML_TEMPLATE = """
                     });
             }
             
+            // Simple function to test DOM access
+            function testDOMAccess() {
+                console.log('Testing DOM access...');
+                const motionLink = document.getElementById('motion-captures-link');
+                const recordingsLink = document.getElementById('recordings-link');
+                console.log('Motion link found:', motionLink);
+                console.log('Recordings link found:', recordingsLink);
+
+                if (motionLink) {
+                    motionLink.textContent = 'Motion Captures - DOM Test Working';
+                    motionLink.style.color = '#00ff00';
+                }
+                if (recordingsLink) {
+                    recordingsLink.textContent = 'Video Recordings - DOM Test Working';
+                    recordingsLink.style.color = '#00ff00';
+                }
+            }
+
             // Wait for page to load before updating status
             document.addEventListener('DOMContentLoaded', function() {
                 console.log('Page loaded, starting status updates');
+
+                // Test DOM access immediately
+                testDOMAccess();
+
                 // Update status immediately and then every 20 seconds (further reduced for Pi Zero W)
                 updateStatus();
                 setInterval(updateStatus, 20000);
-
-                // Initialize OwnCloud links on page load with placeholder
-                setTimeout(function() {
-                    console.log('Initializing OwnCloud links...');
-                    const motionLink = document.getElementById('motion-captures-link');
-                    const recordingsLink = document.getElementById('recordings-link');
-                    console.log('Found link elements on init:', motionLink, recordingsLink);
-
-                    if (motionLink && recordingsLink) {
-                        motionLink.textContent = '📸 Motion Captures (Loading...)';
-                        recordingsLink.textContent = '🎥 Video Recordings (Loading...)';
-                        motionLink.style.color = '#6c757d';
-                        recordingsLink.style.color = '#6c757d';
-                    }
-                }, 100);
             });
+
+            // Fallback: try to initialize after a delay even if DOMContentLoaded already fired
+            setTimeout(function() {
+                console.log('Fallback initialization...');
+                testDOMAccess();
+            }, 2000);
             
             // Function to update date and time overlay
             function updateDateTime() {
