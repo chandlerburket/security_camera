@@ -1008,7 +1008,7 @@ HTML_TEMPLATE = """
                             recordBtn.disabled = false;
                             recordBtn.classList.remove('processing');
                             recordBtn.classList.add('recording');
-                            recordBtn.textContent = 'Stop Recording';
+                            recordBtn.textContent = 'Stop Recording (00:00)';
                         } else {
                             alert('Failed to start recording: ' + data.message);
                             resetRecordButton();
@@ -1062,7 +1062,12 @@ HTML_TEMPLATE = """
                     // Don't update button if it's in processing state
                     if (!recordBtn.classList.contains('processing')) {
                         recordBtn.classList.add('recording');
-                        recordBtn.textContent = 'Stop Recording';
+
+                        // Format duration for button display
+                        const minutes = Math.floor(duration / 60);
+                        const seconds = Math.floor(duration % 60);
+                        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        recordBtn.textContent = `Stop Recording (${timeString})`;
                     }
 
                     statusDiv.style.display = 'block';
