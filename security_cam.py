@@ -283,6 +283,25 @@ class CameraStreamer:
             logger.error(f"❌ Unexpected error uploading to OwnCloud: {e}")
             return False
 
+    def get_camera_url(self):
+        """Get the camera web interface URL"""
+        try:
+            import socket
+            # Get local IP address
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0)
+            try:
+                # Connect to a non-routable address to get local IP
+                s.connect(('10.254.254.254', 1))
+                local_ip = s.getsockname()[0]
+            except Exception:
+                local_ip = '127.0.0.1'
+            finally:
+                s.close()
+            return f"http://{local_ip}:5000"
+        except Exception:
+            return "http://localhost:5000"
+
     def send_pushover_notification(self, message, title="Motion Detected", image_bytes=None):
         """Send a notification via Pushover API with optional image attachment"""
         if not self.pushover_enabled:
@@ -298,6 +317,9 @@ class CameraStreamer:
             # Pushover API endpoint
             pushover_url = "https://api.pushover.net/1/messages.json"
 
+            # Get camera URL for clickable link
+            camera_url = self.get_camera_url()
+
             # Prepare the notification data
             data = {
                 'token': self.pushover_api_token,
@@ -305,7 +327,9 @@ class CameraStreamer:
                 'message': message,
                 'title': title,
                 'priority': 0,  # Normal priority
-                'sound': 'pushover'  # Default sound
+                'sound': 'pushover',  # Default sound
+                'url': camera_url,  # Clickable link to camera
+                'url_title': 'View Camera'  # Link text
             }
 
             # Prepare files for image attachment if provided
