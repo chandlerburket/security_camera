@@ -788,6 +788,11 @@ HTML_TEMPLATE = """
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
+            <p><strong>OwnCloud Files:</strong></p>
+            <p style="margin-left: 20px;">
+                <a href="#" id="motion-captures-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Motion Captures</a><br>
+                <a href="#" id="recordings-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Video Recordings</a>
+            </p>
         </div>
 
         <!-- Recording Controls -->
@@ -798,17 +803,14 @@ HTML_TEMPLATE = """
         <script>
             // Function to update system status
             function updateStatus() {
-                console.log('Updating status...');
                 fetch('/status')
                     .then(response => {
-                        console.log('Status response received:', response.status);
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
                         return response.json();
                     })
                     .then(data => {
-                        console.log('Status data received:', data);
                         
                         // Update camera status indicator
                         const cameraStatusEl = document.getElementById('camera-status');
@@ -932,11 +934,11 @@ HTML_TEMPLATE = """
                         if (uptimeEl) {
                             uptimeEl.textContent = data.uptime || 'Unknown';
                         }
-                        
-                        console.log('Status updated successfully');
+
+                        // Update OwnCloud links
+                        updateOwnCloudLinks(data);
                     })
                     .catch(error => {
-                        console.error('Error fetching status:', error);
                         // Show error in the status elements
                         const elements = ['camera-status', 'wifi-ssid', 'wifi-signal', 'ip-address', 'cpu-temp', 'uptime'];
                         elements.forEach(id => {
@@ -948,9 +950,9 @@ HTML_TEMPLATE = """
                     });
             }
             
+
             // Wait for page to load before updating status
             document.addEventListener('DOMContentLoaded', function() {
-                console.log('Page loaded, starting status updates');
                 // Update status immediately and then every 20 seconds (further reduced for Pi Zero W)
                 updateStatus();
                 setInterval(updateStatus, 20000);
@@ -1004,20 +1006,15 @@ HTML_TEMPLATE = """
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
-                            console.log('Recording started');
                             recordBtn.disabled = false;
                             recordBtn.classList.remove('processing');
                             recordBtn.classList.add('recording');
                             recordBtn.textContent = 'Stop Recording (00:00)';
                             startRecordingTimer();
-                        } else {
-                            alert('Failed to start recording: ' + data.message);
-                            resetRecordButton();
                         }
+                        resetRecordButton();
                     })
                     .catch(error => {
-                        console.error('Error starting recording:', error);
-                        alert('Error starting recording');
                         resetRecordButton();
                     });
             }
@@ -1033,17 +1030,10 @@ HTML_TEMPLATE = """
                 fetch('/stop-recording', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
-                        if (data.status === 'success') {
-                            alert('Recording saved: ' + data.message);
-                        } else {
-                            alert('Failed to stop recording: ' + data.message);
-                        }
                         stopRecordingTimer();
                         resetRecordButton();
                     })
                     .catch(error => {
-                        console.error('Error stopping recording:', error);
-                        alert('Error stopping recording');
                         stopRecordingTimer();
                         resetRecordButton();
                     });
@@ -1122,6 +1112,39 @@ HTML_TEMPLATE = """
                         const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                         recordBtn.textContent = `Stop Recording (${timeString})`;
                     }
+                }
+            }
+
+            function updateOwnCloudLinks(data) {
+                const motionLink = document.getElementById('motion-captures-link');
+                const recordingsLink = document.getElementById('recordings-link');
+
+                if (!motionLink || !recordingsLink) {
+                    return;
+                }
+
+                if (data.owncloud_enabled && data.owncloud_config) {
+                    const baseUrl = data.owncloud_config.url;
+                    const motionFolder = data.owncloud_config.folder || '/motion_captures';
+                    const videoFolder = data.owncloud_config.video_folder || '/recordings';
+
+                    // Construct OwnCloud web interface URLs
+                    const motionUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(motionFolder)}`;
+                    const recordingsUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(videoFolder)}`;
+
+                    motionLink.href = motionUrl;
+                    recordingsLink.href = recordingsUrl;
+                    motionLink.style.color = '#17a2b8';
+                    recordingsLink.style.color = '#17a2b8';
+                    motionLink.textContent = 'Motion Captures';
+                    recordingsLink.textContent = 'Video Recordings';
+                } else {
+                    motionLink.href = '#';
+                    recordingsLink.href = '#';
+                    motionLink.style.color = '#6c757d';
+                    recordingsLink.style.color = '#6c757d';
+                    motionLink.textContent = 'Motion Captures (OwnCloud disabled)';
+                    recordingsLink.textContent = 'Video Recordings (OwnCloud disabled)';
                 }
             }
 
@@ -1277,6 +1300,11 @@ def status():
         'motion_detected': motion_status['motion_detected'],
         'last_motion_time': motion_status['last_motion_time'],
         'owncloud_enabled': streamer.owncloud_enabled,
+        'owncloud_config': {
+            'url': streamer.owncloud_url,
+            'folder': streamer.owncloud_folder,
+            'video_folder': streamer.owncloud_video_folder
+        } if streamer.owncloud_enabled else None,
         'pushover_enabled': streamer.pushover_enabled,
         'recording_status': streamer.get_recording_status(),
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
