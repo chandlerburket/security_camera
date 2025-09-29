@@ -804,17 +804,14 @@ HTML_TEMPLATE = """
         <script>
             // Function to update system status
             function updateStatus() {
-                console.log('Updating status...');
                 fetch('/status')
                     .then(response => {
-                        console.log('Status response received:', response.status);
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
                         return response.json();
                     })
                     .then(data => {
-                        console.log('Status data received:', data);
                         
                         // Update camera status indicator
                         const cameraStatusEl = document.getElementById('camera-status');
@@ -941,11 +938,8 @@ HTML_TEMPLATE = """
 
                         // Update OwnCloud links
                         updateOwnCloudLinks(data);
-
-                        console.log('Status updated successfully');
                     })
                     .catch(error => {
-                        console.error('Error fetching status:', error);
                         // Show error in the status elements
                         const elements = ['camera-status', 'wifi-ssid', 'wifi-signal', 'ip-address', 'cpu-temp', 'uptime'];
                         elements.forEach(id => {
@@ -957,41 +951,13 @@ HTML_TEMPLATE = """
                     });
             }
             
-            // Simple function to test DOM access
-            function testDOMAccess() {
-                console.log('Testing DOM access...');
-                const motionLink = document.getElementById('motion-captures-link');
-                const recordingsLink = document.getElementById('recordings-link');
-                console.log('Motion link found:', motionLink);
-                console.log('Recordings link found:', recordingsLink);
-
-                if (motionLink) {
-                    motionLink.textContent = 'Motion Captures - DOM Test Working';
-                    motionLink.style.color = '#00ff00';
-                }
-                if (recordingsLink) {
-                    recordingsLink.textContent = 'Video Recordings - DOM Test Working';
-                    recordingsLink.style.color = '#00ff00';
-                }
-            }
 
             // Wait for page to load before updating status
             document.addEventListener('DOMContentLoaded', function() {
-                console.log('Page loaded, starting status updates');
-
-                // Test DOM access immediately
-                testDOMAccess();
-
                 // Update status immediately and then every 20 seconds (further reduced for Pi Zero W)
                 updateStatus();
                 setInterval(updateStatus, 20000);
             });
-
-            // Fallback: try to initialize after a delay even if DOMContentLoaded already fired
-            setTimeout(function() {
-                console.log('Fallback initialization...');
-                testDOMAccess();
-            }, 2000);
             
             // Function to update date and time overlay
             function updateDateTime() {
@@ -1041,20 +1007,15 @@ HTML_TEMPLATE = """
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
-                            console.log('Recording started');
                             recordBtn.disabled = false;
                             recordBtn.classList.remove('processing');
                             recordBtn.classList.add('recording');
                             recordBtn.textContent = 'Stop Recording (00:00)';
                             startRecordingTimer();
-                        } else {
-                            alert('Failed to start recording: ' + data.message);
-                            resetRecordButton();
                         }
+                        resetRecordButton();
                     })
                     .catch(error => {
-                        console.error('Error starting recording:', error);
-                        alert('Error starting recording');
                         resetRecordButton();
                     });
             }
@@ -1070,17 +1031,10 @@ HTML_TEMPLATE = """
                 fetch('/stop-recording', { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
-                        if (data.status === 'success') {
-                            alert('Recording saved: ' + data.message);
-                        } else {
-                            alert('Failed to stop recording: ' + data.message);
-                        }
                         stopRecordingTimer();
                         resetRecordButton();
                     })
                     .catch(error => {
-                        console.error('Error stopping recording:', error);
-                        alert('Error stopping recording');
                         stopRecordingTimer();
                         resetRecordButton();
                     });
@@ -1163,19 +1117,14 @@ HTML_TEMPLATE = """
             }
 
             function updateOwnCloudLinks(data) {
-                console.log('Updating OwnCloud links with data:', data);
                 const motionLink = document.getElementById('motion-captures-link');
                 const recordingsLink = document.getElementById('recordings-link');
 
-                console.log('Found elements:', motionLink, recordingsLink);
-
                 if (!motionLink || !recordingsLink) {
-                    console.error('Could not find OwnCloud link elements');
                     return;
                 }
 
                 if (data.owncloud_enabled && data.owncloud_config) {
-                    console.log('OwnCloud enabled, config:', data.owncloud_config);
                     const baseUrl = data.owncloud_config.url;
                     const motionFolder = data.owncloud_config.folder || '/motion_captures';
                     const videoFolder = data.owncloud_config.video_folder || '/recordings';
@@ -1184,22 +1133,19 @@ HTML_TEMPLATE = """
                     const motionUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(motionFolder)}`;
                     const recordingsUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(videoFolder)}`;
 
-                    console.log('Setting URLs:', motionUrl, recordingsUrl);
-
                     motionLink.href = motionUrl;
                     recordingsLink.href = recordingsUrl;
                     motionLink.style.color = '#17a2b8';
                     recordingsLink.style.color = '#17a2b8';
-                    motionLink.textContent = '📸 Motion Captures';
-                    recordingsLink.textContent = '🎥 Video Recordings';
+                    motionLink.textContent = 'Motion Captures';
+                    recordingsLink.textContent = 'Video Recordings';
                 } else {
-                    console.log('OwnCloud disabled or no config');
                     motionLink.href = '#';
                     recordingsLink.href = '#';
                     motionLink.style.color = '#6c757d';
                     recordingsLink.style.color = '#6c757d';
-                    motionLink.textContent = '📸 Motion Captures (OwnCloud disabled)';
-                    recordingsLink.textContent = '🎥 Video Recordings (OwnCloud disabled)';
+                    motionLink.textContent = 'Motion Captures (OwnCloud disabled)';
+                    recordingsLink.textContent = 'Video Recordings (OwnCloud disabled)';
                 }
             }
 
