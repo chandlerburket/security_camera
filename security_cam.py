@@ -812,6 +812,7 @@ HTML_TEMPLATE = """
             <p style="display: flex; justify-content: space-between; align-items: center;"><strong>WiFi Signal:</strong> <span style="display: flex; align-items: center; gap: 8px;"><span class="wifi-bars" id="wifi-bars" style="display: inline-flex; align-items: baseline;"><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span><span class="wifi-bar"></span></span><span id="wifi-signal">Loading...</span></span></p>
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
+            <p><strong>Door Status:</strong> <span id="door-status" style="font-weight: bold;">No data</span></p>
             <p><strong>OwnCloud Files:</strong></p>
             <p style="margin-left: 20px;">
                 <a href="#" id="motion-captures-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Motion Captures</a><br>
@@ -961,6 +962,9 @@ HTML_TEMPLATE = """
 
                         // Update OwnCloud links
                         updateOwnCloudLinks(data);
+
+                        // Update webhook data
+                        updateWebhookData();
                     })
                     .catch(error => {
                         // Show error in the status elements
@@ -971,6 +975,28 @@ HTML_TEMPLATE = """
                                 el.textContent = 'Error loading';
                             }
                         });
+                    });
+            }
+
+            function updateWebhookData() {
+                fetch('/door-status')
+                    .then(response => response.json())
+                    .then(data => {
+                        const doorStatusEl = document.getElementById('door-status');
+                        if (doorStatusEl) {
+                            if (data.door_state !== null) {
+                                const timeAgo = data.time_ago ? Math.floor(data.time_ago) : 0;
+                                const state = data.door_state.toUpperCase();
+                                const stateColor = data.door_state === 'open' ? '#dc3545' : '#28a745';
+                                doorStatusEl.innerHTML = `<span style="color: ${stateColor};">${state}</span> (${timeAgo}s ago)`;
+                            } else {
+                                doorStatusEl.textContent = 'No data';
+                                doorStatusEl.style.color = '#6c757d';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching door status:', error);
                     });
             }
             
@@ -1421,6 +1447,43 @@ def recording_status():
         return streamer.get_recording_status()
     except Exception as e:
         return {"status": "error", "message": f"Error getting recording status: {str(e)}"}
+
+# Door sensor webhook storage
+door_sensor_data = {
+    'door_state': None,
+    'timestamp': None,
+    'device': None,
+    'last_updated': None
+}
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Receive webhook data from door sensor"""
+    try:
+        from flask import request
+        data = request.get_json()
+
+        door_sensor_data['door_state'] = data.get('door_state')
+        door_sensor_data['timestamp'] = data.get('timestamp')
+        door_sensor_data['device'] = data.get('device')
+        door_sensor_data['last_updated'] = time.time()
+
+        logger.info(f"Door sensor webhook received: {data.get('door_state')}")
+        return {"status": "success", "message": "Webhook received"}
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}")
+        return {"status": "error", "message": f"Error processing webhook: {str(e)}"}
+
+@app.route('/door-status')
+def door_status():
+    """Get current door sensor data"""
+    return {
+        'door_state': door_sensor_data['door_state'],
+        'timestamp': door_sensor_data['timestamp'],
+        'device': door_sensor_data['device'],
+        'last_updated': door_sensor_data['last_updated'],
+        'time_ago': time.time() - door_sensor_data['last_updated'] if door_sensor_data['last_updated'] else None
+    }
 
 def main():
     """Main function to start the camera server"""
