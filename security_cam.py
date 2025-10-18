@@ -1035,8 +1035,9 @@ HTML_TEMPLATE = """
                             recordBtn.classList.add('recording');
                             recordBtn.textContent = 'Stop Recording (00:00)';
                             startRecordingTimer();
+                        } else {
+                            resetRecordButton();
                         }
-                        resetRecordButton();
                     })
                     .catch(error => {
                         resetRecordButton();
