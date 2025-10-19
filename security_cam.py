@@ -1456,6 +1456,51 @@ door_sensor_data = {
     'last_updated': None
 }
 
+def send_door_notification(door_state):
+    """Send Pushover notification for door state change"""
+    if not streamer.pushover_enabled:
+        return False
+
+    try:
+        pushover_url = "https://api.pushover.net/1/messages.json"
+        camera_url = streamer.get_camera_url()
+
+        # Customize message and priority based on door state
+        if door_state == 'open':
+            title = "🚪 Door Opened"
+            message = f"The door has been opened at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+            priority = 0  # Normal priority
+            sound = 'pushover'
+        else:
+            title = "🚪 Door Closed"
+            message = f"The door has been closed at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+            priority = -1  # Low priority
+            sound = 'none'
+
+        data = {
+            'token': streamer.pushover_api_token,
+            'user': streamer.pushover_user_key,
+            'message': message,
+            'title': title,
+            'priority': priority,
+            'sound': sound,
+            'url': camera_url,
+            'url_title': 'View Camera'
+        }
+
+        response = requests.post(pushover_url, data=data, timeout=10)
+
+        if response.status_code == 200 and response.json().get('status') == 1:
+            logger.info(f"🔔 Door notification sent: {door_state}")
+            return True
+        else:
+            logger.error(f"❌ Failed to send door notification: {response.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Error sending door notification: {e}")
+        return False
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Receive webhook data from door sensor"""
@@ -1463,12 +1508,20 @@ def webhook():
         from flask import request
         data = request.get_json()
 
-        door_sensor_data['door_state'] = data.get('door_state')
+        previous_state = door_sensor_data['door_state']
+        new_state = data.get('door_state')
+
+        door_sensor_data['door_state'] = new_state
         door_sensor_data['timestamp'] = data.get('timestamp')
         door_sensor_data['device'] = data.get('device')
         door_sensor_data['last_updated'] = time.time()
 
-        logger.info(f"Door sensor webhook received: {data.get('door_state')}")
+        logger.info(f"Door sensor webhook received: {new_state}")
+
+        # Send Pushover notification if state changed
+        if previous_state != new_state and new_state is not None:
+            send_door_notification(new_state)
+
         return {"status": "success", "message": "Webhook received"}
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
