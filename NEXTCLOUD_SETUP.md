@@ -1,24 +1,24 @@
-# OwnCloud Integration Setup Guide
+# Nextcloud Integration Setup Guide
 
-This security camera system can automatically save images to an OwnCloud server when motion is detected.
+This security camera system can automatically save images to a Nextcloud server when motion is detected.
 
 ## Prerequisites
 
-1. **OwnCloud Server**: You need an OwnCloud server running on your local network
+1. **Nextcloud Server**: You need a Nextcloud server running on your local network
 2. **Python requests library**: `pip install requests` (usually already installed)
-3. **Network access**: Your camera device must be able to reach your OwnCloud server
+3. **Network access**: Your camera device must be able to reach your Nextcloud server
 
 ## Setup Instructions
 
-### 1. Configure OwnCloud Server
+### 1. Configure Nextcloud Server
 
-Ensure your OwnCloud server is accessible on your local network. You can test this by accessing the web interface from your camera device.
+Ensure your Nextcloud server is accessible on your local network. You can test this by accessing the web interface from your camera device.
 
-### 2. Create OwnCloud User (Recommended)
+### 2. Create Nextcloud User (Recommended)
 
 For security, create a dedicated user account for the camera:
 
-1. Log into your OwnCloud web interface as admin
+1. Log into your Nextcloud web interface as admin
 2. Go to Users section
 3. Create a new user (e.g., `camera_user`)
 4. Set a strong password
@@ -36,14 +36,14 @@ For security, create a dedicated user account for the camera:
 
 1. Copy the configuration template:
    ```bash
-   cp owncloud_config_example.py owncloud_config.py
+   cp nextcloud_config_example.py nextcloud_config.py
    ```
 
-2. Edit `owncloud_config.py` with your settings:
+2. Edit `nextcloud_config.py` with your settings:
    ```python
-   OWNCLOUD_CONFIG = {
-       "url": "http://192.168.1.100:8080",  # Your OwnCloud server URL
-       "username": "camera_user",           # Your OwnCloud username
+   NEXTCLOUD_CONFIG = {
+       "url": "http://192.168.1.100:8080",  # Your Nextcloud server URL
+       "username": "camera_user",           # Your Nextcloud username
        "password": "your_app_password",     # Your password or app password
        "folder": "/motion_captures",        # Folder to save images
        "enabled": True,                     # Enable uploads
@@ -52,16 +52,16 @@ For security, create a dedicated user account for the camera:
    ```
 
 3. Update the values:
-   - **url**: Your OwnCloud server IP and port (without trailing slash)
-   - **username**: The OwnCloud username you created
+   - **url**: Your Nextcloud server IP and port (without trailing slash)
+   - **username**: The Nextcloud username you created
    - **password**: The password or app password
    - **folder**: The folder where images will be saved (with leading slash)
 
 ## Testing the Setup
 
-### 1. Test OwnCloud Connection
+### 1. Test Nextcloud Connection
 
-Start your camera system and visit: `http://your-camera-ip:5000/test-owncloud`
+Start your camera system and visit: `http://your-camera-ip:5000/test-nextcloud`
 
 This will test the connection and show you if everything is working.
 
@@ -69,7 +69,7 @@ This will test the connection and show you if everything is working.
 
 1. Start the camera system: `python security_cam.py`
 2. Move in front of the camera
-3. Check your OwnCloud folder for new images
+3. Check your Nextcloud folder for new images
 4. Monitor the console for upload messages
 
 ## Image Naming
@@ -83,17 +83,17 @@ Images are automatically named with timestamps:
 ### Common Issues
 
 1. **"Connection refused" error**
-   - Check if OwnCloud server is running
+   - Check if Nextcloud server is running
    - Verify the IP address and port
-   - Test browser access to OwnCloud
+   - Test browser access to Nextcloud
 
 2. **Authentication failed**
    - Verify username and password
    - Try creating an app password instead
-   - Check user permissions in OwnCloud
+   - Check user permissions in Nextcloud
 
 3. **Folder not found**
-   - Ensure the folder exists in OwnCloud
+   - Ensure the folder exists in Nextcloud
    - Check folder path starts with `/`
    - Verify user has write permissions
 
@@ -104,7 +104,7 @@ Images are automatically named with timestamps:
 
 ### Debug Steps
 
-1. **Check OwnCloud status**:
+1. **Check Nextcloud status**:
    ```bash
    curl -u username:password http://your-server:port/remote.php/webdav/
    ```
@@ -119,9 +119,9 @@ Images are automatically named with timestamps:
 ## Security Considerations
 
 - Use app passwords instead of main passwords when possible
-- Ensure OwnCloud is properly secured (HTTPS, strong passwords)
+- Ensure Nextcloud is properly secured (HTTPS, strong passwords)
 - Consider firewall rules to restrict access
-- Don't commit `owncloud_config.py` to version control
+- Don't commit `nextcloud_config.py` to version control
 - Regularly review uploaded images and clean up old files
 
 ## File Structure
@@ -130,9 +130,9 @@ After setup, your project should look like:
 ```
 security_camera/
 ├── security_cam.py              # Main camera script
-├── owncloud_config_example.py   # Configuration template
-├── owncloud_config.py          # Your actual config (don't commit!)
-└── OWNCLOUD_SETUP.md           # This guide
+├── nextcloud_config_example.py  # Configuration template
+├── nextcloud_config.py          # Your actual config (don't commit!)
+└── NEXTCLOUD_SETUP.md           # This guide
 ```
 
 ## Performance Notes
@@ -141,3 +141,12 @@ security_camera/
 - The `save_interval` setting prevents spam uploads
 - Network issues won't crash the camera system
 - Failed uploads are logged but don't stop motion detection
+
+## Migration from OwnCloud
+
+If you're migrating from OwnCloud:
+
+1. Nextcloud uses the same WebDAV API as OwnCloud, so the integration works identically
+2. Your existing OwnCloud server credentials and folders will work with Nextcloud
+3. Simply update your configuration file name from `owncloud_config.py` to `nextcloud_config.py`
+4. Change the dictionary name from `OWNCLOUD_CONFIG` to `NEXTCLOUD_CONFIG`

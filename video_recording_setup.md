@@ -1,7 +1,7 @@
 # Video Recording Setup Guide
 
 ## Overview
-The security camera now includes on-demand video recording functionality with web interface controls. Videos are automatically saved to OwnCloud in a separate directory.
+The security camera now includes on-demand video recording functionality with web interface controls. Videos are automatically saved to Nextcloud in a separate directory.
 
 ## New Features Added
 
@@ -24,7 +24,7 @@ The security camera now includes on-demand video recording functionality with we
 - **Frame rate**: 5 FPS output for smaller file sizes
 
 ### 4. Storage Integration
-- **Separate directory**: Videos saved to `/recordings` folder in OwnCloud
+- **Separate directory**: Videos saved to `/recordings` folder in Nextcloud
 - **Automatic upload**: Videos uploaded immediately after recording stops
 - **Naming convention**: `recording_YYYYMMDD_HHMMSS.mp4`
 
@@ -41,10 +41,10 @@ sudo apt install ffmpeg
 pip3 install psutil
 ```
 
-### 3. Update OwnCloud Configuration
-Add video folder to your `owncloud_config.py`:
+### 3. Update Nextcloud Configuration
+Add video folder to your `nextcloud_config.py`:
 ```python
-OWNCLOUD_CONFIG = {
+NEXTCLOUD_CONFIG = {
     "url": "http://192.168.1.100",
     "username": "camera_user",
     "password": "your_password",
@@ -87,7 +87,7 @@ OWNCLOUD_CONFIG = {
 
 ### File Structure
 ```
-OwnCloud/
+Nextcloud/
 ├── motion_captures/          # Motion detection images
 │   ├── motion_20240101_120000.jpg
 │   └── motion_20240101_120030.jpg
@@ -118,9 +118,9 @@ OwnCloud/
    - Check logs: `sudo journalctl -u security-camera -f`
 
 3. **Video upload fails**
-   - Verify OwnCloud configuration
+   - Verify Nextcloud configuration
    - Check network connectivity
-   - Ensure `/recordings` folder exists in OwnCloud
+   - Ensure `/recordings` folder exists in Nextcloud
 
 4. **Poor video quality**
    - Quality optimized for Pi Zero W performance
@@ -138,7 +138,7 @@ OwnCloud/
 - **Memory usage**: ~50-100 MB during recording
 
 ## Security Notes
-- Videos stored in separate OwnCloud directory
+- Videos stored in separate Nextcloud directory
 - No local storage to prevent SD card filling
 - Automatic cleanup after upload
 - Recording status visible to all web interface users
