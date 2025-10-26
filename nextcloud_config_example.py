@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-OwnCloud Configuration Example for Security Camera
-Copy this file to 'owncloud_config.py' and update with your server details
+Nextcloud Configuration Example for Security Camera
+Copy this file to 'nextcloud_config.py' and update with your server details
 """
 
-# OwnCloud Server Configuration
-OWNCLOUD_CONFIG = {
-    # Your OwnCloud server URL (without trailing slash)
+# Nextcloud Server Configuration
+NEXTCLOUD_CONFIG = {
+    # Your Nextcloud server URL (without trailing slash)
     # Examples:
     #   "http://192.168.1.100:8080"  # Local server with custom port
     #   "https://mycloud.example.com"  # Remote server with SSL
     "url": "http://192.168.1.100",
 
-    # Your OwnCloud username
+    # Your Nextcloud username
     "username": "camera_user",
 
-    # Your OwnCloud password or app password
+    # Your Nextcloud password or app password
     # Note: Consider using app passwords for better security
-    # Go to Settings > Personal > Security > App passwords in OwnCloud
+    # Go to Settings > Personal > Security > App passwords in Nextcloud
     "password": "your_password_here",
 
     # Folder where motion-detected images will be saved
@@ -28,7 +28,7 @@ OWNCLOUD_CONFIG = {
     # The folder will be created automatically if it doesn't exist
     "video_folder": "/recordings",
 
-    # Enable/disable OwnCloud uploads
+    # Enable/disable Nextcloud uploads
     "enabled": True,
 
     # Minimum seconds between image saves (prevents spam)
@@ -36,24 +36,24 @@ OWNCLOUD_CONFIG = {
 }
 
 # How to use this configuration:
-# 1. Copy this file to 'owncloud_config.py'
-# 2. Update the values above with your actual OwnCloud server details
+# 1. Copy this file to 'nextcloud_config.py'
+# 2. Update the values above with your actual Nextcloud server details
 # 3. In your main script, import and use like this:
 #
-#    from owncloud_config import OWNCLOUD_CONFIG
+#    from nextcloud_config import NEXTCLOUD_CONFIG
 #
-#    # Configure OwnCloud settings
-#    streamer.configure_owncloud(
-#        url=OWNCLOUD_CONFIG["url"],
-#        username=OWNCLOUD_CONFIG["username"],
-#        password=OWNCLOUD_CONFIG["password"],
-#        folder=OWNCLOUD_CONFIG["folder"],
-#        enabled=OWNCLOUD_CONFIG["enabled"]
+#    # Configure Nextcloud settings
+#    streamer.configure_nextcloud(
+#        url=NEXTCLOUD_CONFIG["url"],
+#        username=NEXTCLOUD_CONFIG["username"],
+#        password=NEXTCLOUD_CONFIG["password"],
+#        folder=NEXTCLOUD_CONFIG["folder"],
+#        enabled=NEXTCLOUD_CONFIG["enabled"]
 #    )
-#    streamer.save_interval = OWNCLOUD_CONFIG["save_interval"]
+#    streamer.save_interval = NEXTCLOUD_CONFIG["save_interval"]
 
 # Security Notes:
 # - Never commit your actual credentials to version control
 # - Consider using environment variables for sensitive data
 # - Use app passwords instead of your main password when possible
-# - Ensure your OwnCloud server is properly secured
+# - Ensure your Nextcloud server is properly secured

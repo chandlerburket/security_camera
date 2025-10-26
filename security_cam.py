@@ -63,13 +63,13 @@ class CameraStreamer:
         self.last_motion_time = 0
         self.last_save_time = 0  # Track when last image was saved
 
-        # OwnCloud configuration - update these with your server details
-        self.owncloud_enabled = False  # Set to True to enable uploads
-        self.owncloud_url = "http://192.168.1.100"  # Your OwnCloud server IP
-        self.owncloud_username = "camera_user"  # Your OwnCloud username
-        self.owncloud_password = "your_password"  # Your OwnCloud password
-        self.owncloud_folder = "/motion_captures"  # Folder to save images
-        self.owncloud_video_folder = "/recordings"  # Folder to save videos
+        # Nextcloud configuration - update these with your server details
+        self.nextcloud_enabled = False  # Set to True to enable uploads
+        self.nextcloud_url = "http://192.168.1.100"  # Your Nextcloud server IP
+        self.nextcloud_username = "camera_user"  # Your Nextcloud username
+        self.nextcloud_password = "your_password"  # Your Nextcloud password
+        self.nextcloud_folder = "/motion_captures"  # Folder to save images
+        self.nextcloud_video_folder = "/recordings"  # Folder to save videos
         self.save_interval = 10  # Increased interval for Pi Zero W to reduce I/O load
 
         # Pushover configuration - update these with your Pushover credentials
@@ -97,16 +97,16 @@ class CameraStreamer:
         self.system_start_time = time.time()
         self.startup_notification_sent = False
 
-    def configure_owncloud(self, url, username, password, folder="/motion_captures", video_folder="/recordings", enabled=True):
-        """Configure OwnCloud settings for image and video uploads"""
-        self.owncloud_url = url.rstrip('/')  # Remove trailing slash
-        self.owncloud_username = username
-        self.owncloud_password = password
-        self.owncloud_folder = folder if folder.startswith('/') else f'/{folder}'
-        self.owncloud_video_folder = video_folder if video_folder.startswith('/') else f'/{video_folder}'
-        self.owncloud_enabled = enabled
+    def configure_nextcloud(self, url, username, password, folder="/motion_captures", video_folder="/recordings", enabled=True):
+        """Configure Nextcloud settings for image and video uploads"""
+        self.nextcloud_url = url.rstrip('/')  # Remove trailing slash
+        self.nextcloud_username = username
+        self.nextcloud_password = password
+        self.nextcloud_folder = folder if folder.startswith('/') else f'/{folder}'
+        self.nextcloud_video_folder = video_folder if video_folder.startswith('/') else f'/{video_folder}'
+        self.nextcloud_enabled = enabled
 
-        logger.info(f"🔧 OwnCloud configured: {url} - Images: {folder}, Videos: {video_folder} (enabled: {enabled})")
+        logger.info(f"🔧 Nextcloud configured: {url} - Images: {folder}, Videos: {video_folder} (enabled: {enabled})")
 
     def configure_pushover(self, user_key, api_token, enabled=True, notify_interval=60):
         """Configure Pushover settings for motion notifications"""
@@ -235,25 +235,25 @@ class CameraStreamer:
             'last_motion_time': self.last_motion_time
         }
 
-    def upload_to_owncloud(self, data, filename, folder_type='image'):
-        """Upload data to OwnCloud server via WebDAV"""
-        if not self.owncloud_enabled:
+    def upload_to_nextcloud(self, data, filename, folder_type='image'):
+        """Upload data to Nextcloud server via WebDAV"""
+        if not self.nextcloud_enabled:
             return False
 
         try:
             # Choose folder based on type
             if folder_type == 'video':
-                folder = self.owncloud_video_folder
+                folder = self.nextcloud_video_folder
                 content_type = 'video/mp4'
             else:
-                folder = self.owncloud_folder
+                folder = self.nextcloud_folder
                 content_type = 'image/jpeg'
 
             # Construct the full WebDAV URL
-            webdav_url = f"{self.owncloud_url}/remote.php/webdav{folder}/{filename}"
+            webdav_url = f"{self.nextcloud_url}/remote.php/webdav{folder}/{filename}"
 
             # Prepare authentication
-            auth = HTTPBasicAuth(self.owncloud_username, self.owncloud_password)
+            auth = HTTPBasicAuth(self.nextcloud_username, self.nextcloud_password)
 
             # Set headers for WebDAV upload
             headers = {
@@ -270,17 +270,17 @@ class CameraStreamer:
             )
 
             if response.status_code in [200, 201, 204]:
-                logger.info(f"✅ Successfully uploaded {filename} to OwnCloud ({folder_type})")
+                logger.info(f"✅ Successfully uploaded {filename} to Nextcloud ({folder_type})")
                 return True
             else:
                 logger.error(f"❌ Failed to upload {filename}. Status: {response.status_code}, Response: {response.text}")
                 return False
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Network error uploading to OwnCloud: {e}")
+            logger.error(f"❌ Network error uploading to Nextcloud: {e}")
             return False
         except Exception as e:
-            logger.error(f"❌ Unexpected error uploading to OwnCloud: {e}")
+            logger.error(f"❌ Unexpected error uploading to Nextcloud: {e}")
             return False
 
     def get_camera_url(self):
@@ -385,9 +385,9 @@ class CameraStreamer:
             notification_message = f"Motion detected at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(current_time))}"
             self.send_pushover_notification(notification_message, image_bytes=frame_bytes)
 
-            # Upload to OwnCloud if enabled
-            if self.owncloud_enabled:
-                success = self.upload_to_owncloud(frame_bytes, filename, 'image')
+            # Upload to Nextcloud if enabled
+            if self.nextcloud_enabled:
+                success = self.upload_to_nextcloud(frame_bytes, filename, 'image')
                 if success:
                     self.last_save_time = current_time
                     logger.info(f"📸 Motion detected - image saved: {filename}")
@@ -396,7 +396,7 @@ class CameraStreamer:
                     logger.error(f"❌ Failed to save motion image: {filename}")
                     return False
             else:
-                logger.info("📸 Motion detected but OwnCloud upload is disabled")
+                logger.info("📸 Motion detected but Nextcloud upload is disabled")
                 self.last_save_time = current_time  # Still update save time for notification throttling
                 return True
 
@@ -456,9 +456,9 @@ class CameraStreamer:
             video_data = self.create_video_from_temp_files()
 
             if video_data:
-                # Upload to OwnCloud if enabled
-                if self.owncloud_enabled:
-                    success = self.upload_to_owncloud(video_data, filename, 'video')
+                # Upload to Nextcloud if enabled
+                if self.nextcloud_enabled:
+                    success = self.upload_to_nextcloud(video_data, filename, 'video')
                     if success:
                         logger.info(f"🎥 Recording saved: {filename} (duration: {recording_duration:.1f}s)")
                         return {
@@ -469,7 +469,7 @@ class CameraStreamer:
                     else:
                         return {"status": "error", "message": "Failed to upload recording"}
                 else:
-                    logger.info(f"🎥 Recording completed but OwnCloud upload disabled (duration: {recording_duration:.1f}s)")
+                    logger.info(f"🎥 Recording completed but Nextcloud upload disabled (duration: {recording_duration:.1f}s)")
                     return {
                         "status": "success",
                         "message": "Recording completed (upload disabled)",
@@ -813,7 +813,7 @@ HTML_TEMPLATE = """
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
             <p><strong>Door Status:</strong> <span id="door-status" style="font-weight: bold;">No data</span></p>
-            <p><strong>OwnCloud Files:</strong></p>
+            <p><strong>Nextcloud Files:</strong></p>
             <p style="margin-left: 20px;">
                 <a href="#" id="motion-captures-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Motion Captures</a><br>
                 <a href="#" id="recordings-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Video Recordings</a>
@@ -960,8 +960,8 @@ HTML_TEMPLATE = """
                             uptimeEl.textContent = data.uptime || 'Unknown';
                         }
 
-                        // Update OwnCloud links
-                        updateOwnCloudLinks(data);
+                        // Update Nextcloud links
+                        updateNextcloudLinks(data);
 
                         // Update webhook data
                         updateWebhookData();
@@ -1166,7 +1166,7 @@ HTML_TEMPLATE = """
                 }
             }
 
-            function updateOwnCloudLinks(data) {
+            function updateNextcloudLinks(data) {
                 const motionLink = document.getElementById('motion-captures-link');
                 const recordingsLink = document.getElementById('recordings-link');
 
@@ -1174,12 +1174,12 @@ HTML_TEMPLATE = """
                     return;
                 }
 
-                if (data.owncloud_enabled && data.owncloud_config) {
-                    const baseUrl = data.owncloud_config.url;
-                    const motionFolder = data.owncloud_config.folder || '/motion_captures';
-                    const videoFolder = data.owncloud_config.video_folder || '/recordings';
+                if (data.nextcloud_enabled && data.nextcloud_config) {
+                    const baseUrl = data.nextcloud_config.url;
+                    const motionFolder = data.nextcloud_config.folder || '/motion_captures';
+                    const videoFolder = data.nextcloud_config.video_folder || '/recordings';
 
-                    // Construct OwnCloud web interface URLs
+                    // Construct Nextcloud web interface URLs
                     const motionUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(motionFolder)}`;
                     const recordingsUrl = `${baseUrl}/index.php/apps/files/?dir=${encodeURIComponent(videoFolder)}`;
 
@@ -1194,8 +1194,8 @@ HTML_TEMPLATE = """
                     recordingsLink.href = '#';
                     motionLink.style.color = '#6c757d';
                     recordingsLink.style.color = '#6c757d';
-                    motionLink.textContent = 'Motion Captures (OwnCloud disabled)';
-                    recordingsLink.textContent = 'Video Recordings (OwnCloud disabled)';
+                    motionLink.textContent = 'Motion Captures (Nextcloud disabled)';
+                    recordingsLink.textContent = 'Video Recordings (Nextcloud disabled)';
                 }
             }
 
@@ -1350,12 +1350,12 @@ def status():
         'camera_initialized': streamer.picam2 is not None,
         'motion_detected': motion_status['motion_detected'],
         'last_motion_time': motion_status['last_motion_time'],
-        'owncloud_enabled': streamer.owncloud_enabled,
-        'owncloud_config': {
-            'url': streamer.owncloud_url,
-            'folder': streamer.owncloud_folder,
-            'video_folder': streamer.owncloud_video_folder
-        } if streamer.owncloud_enabled else None,
+        'nextcloud_enabled': streamer.nextcloud_enabled,
+        'nextcloud_config': {
+            'url': streamer.nextcloud_url,
+            'folder': streamer.nextcloud_folder,
+            'video_folder': streamer.nextcloud_video_folder
+        } if streamer.nextcloud_enabled else None,
         'pushover_enabled': streamer.pushover_enabled,
         'recording_status': streamer.get_recording_status(),
         'wifi_signal_dbm': system_info['wifi_signal_dbm'],
@@ -1367,19 +1367,19 @@ def status():
         'uptime': system_info['uptime']
     }
 
-@app.route('/test-owncloud')
-def test_owncloud():
-    """Test OwnCloud connection"""
-    if not streamer.owncloud_enabled:
-        return {"status": "error", "message": "OwnCloud is not enabled"}
+@app.route('/test-nextcloud')
+def test_nextcloud():
+    """Test Nextcloud connection"""
+    if not streamer.nextcloud_enabled:
+        return {"status": "error", "message": "Nextcloud is not enabled"}
 
     try:
         # Test connection by trying to create a test file
         test_filename = f"test_connection_{int(time.time())}.txt"
-        test_data = b"OwnCloud connection test from security camera"
+        test_data = b"Nextcloud connection test from security camera"
 
-        webdav_url = f"{streamer.owncloud_url}/remote.php/webdav{streamer.owncloud_folder}/{test_filename}"
-        auth = HTTPBasicAuth(streamer.owncloud_username, streamer.owncloud_password)
+        webdav_url = f"{streamer.nextcloud_url}/remote.php/webdav{streamer.nextcloud_folder}/{test_filename}"
+        auth = HTTPBasicAuth(streamer.nextcloud_username, streamer.nextcloud_password)
 
         response = requests.put(
             webdav_url,
@@ -1392,7 +1392,7 @@ def test_owncloud():
         if response.status_code in [200, 201, 204]:
             # Delete the test file
             requests.delete(webdav_url, auth=auth, timeout=5)
-            return {"status": "success", "message": "OwnCloud connection successful"}
+            return {"status": "success", "message": "Nextcloud connection successful"}
         else:
             return {
                 "status": "error",
@@ -1489,24 +1489,24 @@ def main():
     """Main function to start the camera server"""
     print("🎥 Starting Raspberry Pi Camera Web Server...")
 
-    # Try to load OwnCloud configuration
+    # Try to load Nextcloud configuration
     try:
-        from owncloud_config import OWNCLOUD_CONFIG
-        streamer.configure_owncloud(
-            url=OWNCLOUD_CONFIG["url"],
-            username=OWNCLOUD_CONFIG["username"],
-            password=OWNCLOUD_CONFIG["password"],
-            folder=OWNCLOUD_CONFIG["folder"],
-            video_folder=OWNCLOUD_CONFIG.get("video_folder", "/recordings"),
-            enabled=OWNCLOUD_CONFIG["enabled"]
+        from nextcloud_config import NEXTCLOUD_CONFIG
+        streamer.configure_nextcloud(
+            url=NEXTCLOUD_CONFIG["url"],
+            username=NEXTCLOUD_CONFIG["username"],
+            password=NEXTCLOUD_CONFIG["password"],
+            folder=NEXTCLOUD_CONFIG["folder"],
+            video_folder=NEXTCLOUD_CONFIG.get("video_folder", "/recordings"),
+            enabled=NEXTCLOUD_CONFIG["enabled"]
         )
-        streamer.save_interval = OWNCLOUD_CONFIG.get("save_interval", 5)
-        print("✅ OwnCloud configuration loaded")
+        streamer.save_interval = NEXTCLOUD_CONFIG.get("save_interval", 5)
+        print("✅ Nextcloud configuration loaded")
     except ImportError:
-        print("⚠️  No OwnCloud configuration found. Copy owncloud_config_example.py to owncloud_config.py and configure it.")
-        print("   Motion detection will work, but images won't be saved to OwnCloud.")
+        print("⚠️  No Nextcloud configuration found. Copy nextcloud_config_example.py to nextcloud_config.py and configure it.")
+        print("   Motion detection will work, but images won't be saved to Nextcloud.")
     except Exception as e:
-        print(f"⚠️  Error loading OwnCloud configuration: {e}")
+        print(f"⚠️  Error loading Nextcloud configuration: {e}")
 
     # Try to load Pushover configuration
     try:
