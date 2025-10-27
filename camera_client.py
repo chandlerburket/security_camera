@@ -255,6 +255,14 @@ class CameraClient:
                 'pushover_enabled': self.pushover_enabled
             }
 
+            # Add Nextcloud config if enabled
+            if self.nextcloud_enabled:
+                status_data['nextcloud_config'] = {
+                    'url': self.nextcloud_url,
+                    'folder': self.nextcloud_folder,
+                    'video_folder': self.nextcloud_video_folder
+                }
+
             # Get system metrics
             try:
                 with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:

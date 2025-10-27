@@ -47,6 +47,7 @@ class CameraData:
         self.wifi_signal_dbm = None
         self.wifi_signal_quality = "Unknown"
         self.nextcloud_enabled = False
+        self.nextcloud_config = None
         self.pushover_enabled = False
         self.last_status_update = 0
 
@@ -71,6 +72,7 @@ class CameraData:
         self.wifi_signal_dbm = status_data.get('wifi_signal_dbm')
         self.wifi_signal_quality = status_data.get('wifi_signal_quality', 'Unknown')
         self.nextcloud_enabled = status_data.get('nextcloud_enabled', False)
+        self.nextcloud_config = status_data.get('nextcloud_config')
         self.pushover_enabled = status_data.get('pushover_enabled', False)
         self.last_status_update = time.time()
 
@@ -762,6 +764,7 @@ def status():
         'wifi_signal_percent': wifi_signal_percent,
         'wifi_signal_quality': camera.wifi_signal_quality,
         'nextcloud_enabled': camera.nextcloud_enabled,
+        'nextcloud_config': camera.nextcloud_config,
         'pushover_enabled': camera.pushover_enabled,
         'last_update': camera.last_status_update
     })
