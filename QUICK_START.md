@@ -80,7 +80,24 @@ Located on Raspberry Pi, sends frames to server.
 2. Edit with your Nextcloud URL and credentials
 3. Restart camera client
 
-## Production Deployment
+## Production Deployment (Auto-start on Boot)
+
+### Option 1: Systemd Service (Recommended for Ubuntu/Debian)
+
+```bash
+# Automatic setup
+chmod +x setup_service.sh
+sudo ./setup_service.sh
+
+# Manual setup - see SYSTEMD_SETUP.md for details
+sudo cp camera-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable camera-server
+sudo systemctl start camera-server
+sudo systemctl status camera-server
+```
+
+### Option 2: PM2 Process Manager
 
 ```bash
 # Install PM2

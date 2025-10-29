@@ -167,29 +167,10 @@
             border-color: #bee5eb;
             color: #0c5460;
         }
-        .connection-status {
-            padding: 5px 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-        .connection-status.connected {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .connection-status.disconnected {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="connection-status" class="connection-status disconnected">
-            🔴 Connecting to server...
-        </div>
 
         <div class="video-section">
             <div class="video-container" style="position: relative;">
@@ -228,21 +209,6 @@
 
         let framesReceived = 0;
         let lastFrameTime = Date.now();
-
-        // Connection status
-        socket.on('connect', () => {
-            console.log('✅ Connected to server');
-            const statusEl = document.getElementById('connection-status');
-            statusEl.textContent = '🟢 Connected';
-            statusEl.className = 'connection-status connected';
-        });
-
-        socket.on('disconnect', () => {
-            console.log('🔴 Disconnected from server');
-            const statusEl = document.getElementById('connection-status');
-            statusEl.textContent = '🔴 Disconnected';
-            statusEl.className = 'connection-status disconnected';
-        });
 
         // Receive frames via Socket.io
         socket.on('frame', (data) => {
@@ -377,14 +343,44 @@
                 });
         }
 
+        function formatTimeAgo(seconds) {
+            if (seconds < 60) {
+                // Less than 1 minute: show seconds
+                return `${Math.floor(seconds)}s ago`;
+            } else if (seconds < 3600) {
+                // Less than 1 hour: show minutes
+                const minutes = Math.floor(seconds / 60);
+                return `${minutes}m ago`;
+            } else if (seconds < 86400) {
+                // Less than 1 day: show hours and minutes
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                if (minutes > 0) {
+                    return `${hours}h ${minutes}m ago`;
+                } else {
+                    return `${hours}h ago`;
+                }
+            } else {
+                // 1 day or more: show days and hours
+                const days = Math.floor(seconds / 86400);
+                const hours = Math.floor((seconds % 86400) / 3600);
+                if (hours > 0) {
+                    return `${days}d ${hours}h ago`;
+                } else {
+                    return `${days}d ago`;
+                }
+            }
+        }
+
         function updateDoorStatus(data) {
             const doorStatusEl = document.getElementById('door-status');
             if (doorStatusEl) {
                 if (data.door_state !== null) {
-                    const timeAgo = data.time_ago ? Math.floor(data.time_ago) : 0;
+                    const timeAgo = data.time_ago ? data.time_ago : 0;
+                    const timeAgoFormatted = formatTimeAgo(timeAgo);
                     const state = data.door_state.toUpperCase();
                     const stateColor = data.door_state === 'open' ? '#dc3545' : '#28a745';
-                    doorStatusEl.innerHTML = `<span style="color: ${stateColor};">${state}</span> (${timeAgo}s ago)`;
+                    doorStatusEl.innerHTML = `<span style="color: ${stateColor};">${state}</span> (${timeAgoFormatted})`;
                 } else {
                     doorStatusEl.textContent = 'No data';
                     doorStatusEl.style.color = '#6c757d';
