@@ -447,17 +447,24 @@ class CameraClient:
 
                 # Send frame to server
                 try:
-                    requests.post(
+                    response = requests.post(
                         f"{self.server_url}/api/camera/frame",
                         data=frame_bytes,
                         headers={
                             'Content-Type': 'image/jpeg',
                             'X-Camera-ID': self.camera_id
                         },
-                        timeout=2
+                        timeout=1.0  # Reduced timeout for faster recovery
                     )
-                except:
-                    pass  # Don't crash if server unavailable
+                    if response.status_code != 200:
+                        logger.warning(f"⚠️  Frame upload failed: HTTP {response.status_code}")
+                except requests.exceptions.Timeout:
+                    logger.warning(f"⚠️  Frame upload timeout")
+                except requests.exceptions.ConnectionError:
+                    logger.error(f"❌ Cannot connect to server at {self.server_url}")
+                    time.sleep(5)  # Wait before retrying
+                except Exception as e:
+                    logger.warning(f"⚠️  Frame upload error: {e}")
 
                 # Send status update periodically
                 current_time = time.time()
