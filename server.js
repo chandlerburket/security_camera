@@ -77,9 +77,6 @@ class CameraData {
         this.uptime = 'Unknown';
         this.wifiSignalDbm = null;
         this.wifiSignalQuality = 'Unknown';
-        this.nextcloudEnabled = false;
-        this.nextcloudConfig = null;
-        this.pushoverEnabled = false;
         this.lastStatusUpdate = 0;
         this.frameCount = 0;
     }
@@ -116,9 +113,6 @@ class CameraData {
         this.uptime = statusData.uptime || 'Unknown';
         this.wifiSignalDbm = statusData.wifi_signal_dbm || null;
         this.wifiSignalQuality = statusData.wifi_signal_quality || 'Unknown';
-        this.nextcloudEnabled = statusData.nextcloud_enabled || false;
-        this.nextcloudConfig = statusData.nextcloud_config || null;
-        this.pushoverEnabled = statusData.pushover_enabled || false;
         this.lastStatusUpdate = Date.now();
     }
 }
@@ -373,6 +367,13 @@ app.get('/status', (req, res) => {
             dbm >= -80 ? 30 : 10;
     }
 
+    // Include server-side Nextcloud and Pushover configuration
+    const nextcloudConfig = integrationsConfig.nextcloud.enabled ? {
+        url: integrationsConfig.nextcloud.url,
+        folder: integrationsConfig.nextcloud.motionFolder,
+        video_folder: integrationsConfig.nextcloud.videoFolder
+    } : null;
+
     res.json({
         status: 'running',
         camera_id: cameraId,
@@ -384,9 +385,9 @@ app.get('/status', (req, res) => {
         wifi_signal_dbm: camera.wifiSignalDbm,
         wifi_signal_percent: wifiSignalPercent,
         wifi_signal_quality: camera.wifiSignalQuality,
-        nextcloud_enabled: camera.nextcloudEnabled,
-        nextcloud_config: camera.nextcloudConfig,
-        pushover_enabled: camera.pushoverEnabled,
+        nextcloud_enabled: integrationsConfig.nextcloud.enabled,
+        nextcloud_config: nextcloudConfig,
+        pushover_enabled: integrationsConfig.pushover.enabled,
         last_update: camera.lastStatusUpdate
     });
 });
