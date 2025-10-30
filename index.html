@@ -167,6 +167,39 @@
             border-color: #bee5eb;
             color: #0c5460;
         }
+        .alarm-button {
+            background-color: #6c757d;
+            transition: background-color 0.3s ease;
+        }
+        .alarm-button:hover:not(:disabled) {
+            background-color: #5a6268;
+        }
+        .alarm-button.active {
+            background-color: #dc3545;
+        }
+        .alarm-button.active:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+        .alarm-status {
+            background-color: rgba(220, 53, 69, 0.1);
+            border: 1px solid #dc3545;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            color: #dc3545;
+            text-align: center;
+            font-weight: bold;
+        }
+        @keyframes flash {
+            0%, 100% {
+                background-color: rgba(220, 53, 69, 0.1);
+                border-color: #dc3545;
+            }
+            50% {
+                background-color: rgba(220, 53, 69, 0.5);
+                border-color: #ff0000;
+            }
+        }
     </style>
 </head>
 <body>
@@ -181,6 +214,10 @@
 
         <div id="recording-status" class="recording-status" style="display: none;">
             <span id="recording-text">Recording: 00:00</span>
+        </div>
+
+        <div id="alarm-status" class="alarm-status" style="display: none;">
+            Door Alarm Active
         </div>
 
         <div class="info">
@@ -198,6 +235,7 @@
         <!-- Recording Controls -->
         <div class="recording-controls">
             <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">Start Recording</button>
+            <button id="alarm-toggle-btn" class="alarm-button" onclick="toggleAlarm()">Enable Door Alarm</button>
         </div>
     </div>
 
@@ -231,6 +269,22 @@
         // Receive door status updates
         socket.on('door-status', (data) => {
             updateDoorStatus(data);
+        });
+
+        // Receive alarm status updates
+        socket.on('alarm-status', (data) => {
+            updateAlarmUI(data.enabled);
+        });
+
+        // Receive door alarm events
+        socket.on('door-alarm', (data) => {
+            console.log('🚨 DOOR ALARM TRIGGERED:', data.message);
+            // Flash the alarm status
+            const alarmStatus = document.getElementById('alarm-status');
+            alarmStatus.style.animation = 'none';
+            setTimeout(() => {
+                alarmStatus.style.animation = 'flash 1s ease-in-out 3';
+            }, 10);
         });
 
         // Function to update system status
@@ -323,6 +377,11 @@
 
                     // Update Nextcloud links
                     updateNextcloudLinks(data);
+
+                    // Update alarm state
+                    if (data.alarm_enabled !== undefined) {
+                        updateAlarmUI(data.alarm_enabled);
+                    }
 
                     // Update webhook data
                     updateWebhookData();
@@ -483,6 +542,42 @@
             recordBtn.disabled = false;
             recordBtn.classList.remove('recording', 'processing');
             recordBtn.textContent = 'Start Recording';
+        }
+
+        // Alarm functions
+        function toggleAlarm() {
+            const alarmBtn = document.getElementById('alarm-toggle-btn');
+
+            // Immediate UI feedback
+            alarmBtn.disabled = true;
+
+            fetch('/toggle-alarm', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateAlarmUI(data.alarm_enabled);
+                    }
+                    alarmBtn.disabled = false;
+                })
+                .catch(error => {
+                    console.error('Alarm toggle error:', error);
+                    alarmBtn.disabled = false;
+                });
+        }
+
+        function updateAlarmUI(isEnabled) {
+            const alarmBtn = document.getElementById('alarm-toggle-btn');
+            const alarmStatus = document.getElementById('alarm-status');
+
+            if (isEnabled) {
+                alarmBtn.classList.add('active');
+                alarmBtn.textContent = 'Disable Door Alarm';
+                alarmStatus.style.display = 'block';
+            } else {
+                alarmBtn.classList.remove('active');
+                alarmBtn.textContent = 'Enable Door Alarm';
+                alarmStatus.style.display = 'none';
+            }
         }
 
         function updateRecordingUI(isRecording, duration = 0) {
