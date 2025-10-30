@@ -463,6 +463,45 @@ app.get('/debug/cameras', (req, res) => {
     });
 });
 
+// Login endpoint
+app.post('/api/login', (req, res) => {
+    try {
+        const { username, password, remember } = req.body;
+
+        // TODO: Replace with your actual authentication logic
+        // This is a basic example - you should use proper password hashing
+        const validUsername = process.env.CAMERA_USERNAME || 'admin';
+        const validPassword = process.env.CAMERA_PASSWORD || 'admin';
+
+        if (username === validUsername && password === validPassword) {
+            // In a real app, generate a proper JWT token
+            const token = Buffer.from(`${username}:${Date.now()}`).toString('base64');
+
+            res.json({
+                success: true,
+                token: token,
+                message: 'Login successful'
+            });
+        } else {
+            res.status(401).json({
+                success: false,
+                message: 'Invalid username or password'
+            });
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'An error occurred during login'
+        });
+    }
+});
+
+// Serve login page
+app.get('/login', (req, res) => {
+    res.sendFile(__dirname + '/login.html');
+});
+
 // Serve main page
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
