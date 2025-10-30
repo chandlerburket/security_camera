@@ -9,6 +9,8 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const bodyParser = require('body-parser');
+const axios = require('axios');
+const FormData = require('form-data');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,9 +24,32 @@ const io = socketIo(server, {
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.raw({ type: 'image/jpeg', limit: '5mb' }));
+app.use(bodyParser.raw({ type: 'video/mp4', limit: '50mb' }));
+
+// Load integrations configuration
+let integrationsConfig = {
+    nextcloud: { enabled: false },
+    pushover: { enabled: false }
+};
+
+try {
+    integrationsConfig = require('./server_integrations_config.local.js');
+    console.log('✅ Loaded integrations config from server_integrations_config.local.js');
+} catch (err) {
+    try {
+        integrationsConfig = require('./server_integrations_config.js');
+        console.log('⚠️  Loaded default integrations config (update server_integrations_config.local.js)');
+    } catch (err2) {
+        console.log('⚠️  No integrations config found, features disabled');
+    }
+}
 
 // Store camera data
 const cameras = new Map();
+
+// Track last upload/notification times
+const lastMotionSave = new Map();
+const lastPushoverNotification = new Map();
 
 // Door sensor data
 const doorSensorData = {
@@ -106,6 +131,91 @@ function getCamera(cameraId) {
     return cameras.get(cameraId);
 }
 
+// Nextcloud upload function
+async function uploadToNextcloud(data, filename, folderType = 'image') {
+    if (!integrationsConfig.nextcloud.enabled) {
+        return false;
+    }
+
+    try {
+        const config = integrationsConfig.nextcloud;
+        const folder = folderType === 'video' ? config.videoFolder : config.motionFolder;
+        const contentType = folderType === 'video' ? 'video/mp4' : 'image/jpeg';
+
+        const webdavUrl = `${config.url}/remote.php/webdav${folder}/${filename}`;
+
+        const response = await axios.put(webdavUrl, data, {
+            auth: {
+                username: config.username,
+                password: config.password
+            },
+            headers: {
+                'Content-Type': contentType
+            },
+            timeout: 30000
+        });
+
+        if ([200, 201, 204].includes(response.status)) {
+            console.log(`✅ Uploaded ${filename} to Nextcloud`);
+            return true;
+        } else {
+            console.error(`❌ Nextcloud upload failed: ${response.status}`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`❌ Nextcloud upload error: ${error.message}`);
+        return false;
+    }
+}
+
+// Pushover notification function
+async function sendPushoverNotification(message, title = 'Motion Detected', imageBytes = null, cameraId = 'camera1') {
+    if (!integrationsConfig.pushover.enabled) {
+        return false;
+    }
+
+    const now = Date.now();
+    const lastNotificationTime = lastPushoverNotification.get(cameraId) || 0;
+
+    // Check notification interval
+    if ((now - lastNotificationTime) / 1000 < integrationsConfig.pushover.notifyInterval) {
+        return false;
+    }
+
+    try {
+        const config = integrationsConfig.pushover;
+        const formData = new FormData();
+
+        formData.append('token', config.apiToken);
+        formData.append('user', config.userKey);
+        formData.append('message', message);
+        formData.append('title', title);
+        formData.append('priority', config.priority || 0);
+        formData.append('sound', config.sound || 'pushover');
+
+        if (imageBytes) {
+            formData.append('attachment', imageBytes, {
+                filename: 'motion_capture.jpg',
+                contentType: 'image/jpeg'
+            });
+        }
+
+        const response = await axios.post('https://api.pushover.net/1/messages.json', formData, {
+            headers: formData.getHeaders(),
+            timeout: 10000
+        });
+
+        if (response.status === 200 && response.data.status === 1) {
+            lastPushoverNotification.set(cameraId, now);
+            console.log(`🔔 Pushover notification sent for ${cameraId}`);
+            return true;
+        }
+    } catch (error) {
+        console.error(`❌ Pushover error: ${error.message}`);
+    }
+    return false;
+}
+
 // API Endpoints for camera client
 
 // Receive frame from camera
@@ -163,6 +273,85 @@ app.post('/api/camera/status', (req, res) => {
     } catch (error) {
         console.error(`Error receiving status: ${error}`);
         res.status(500).json({ status: 'error' });
+    }
+});
+
+// Upload motion image (from camera client)
+app.post('/api/camera/motion-image', async (req, res) => {
+    try {
+        const cameraId = req.headers['x-camera-id'] || 'camera1';
+        const imageBytes = req.body;
+
+        if (!imageBytes || imageBytes.length === 0) {
+            return res.status(400).json({ status: 'error', message: 'Empty image' });
+        }
+
+        const now = Date.now();
+        const lastSaveTime = lastMotionSave.get(cameraId) || 0;
+
+        // Check save interval
+        if (integrationsConfig.nextcloud.enabled &&
+            (now - lastSaveTime) / 1000 < integrationsConfig.nextcloud.saveInterval) {
+            return res.json({ status: 'skipped', message: 'Too soon after last save' });
+        }
+
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '_');
+        const filename = `motion_${timestamp}.jpg`;
+
+        // Send Pushover notification
+        const notificationMsg = `Motion detected at ${new Date().toLocaleString()}`;
+        await sendPushoverNotification(notificationMsg, 'Motion Detected', imageBytes, cameraId);
+
+        // Upload to Nextcloud
+        let uploadSuccess = false;
+        if (integrationsConfig.nextcloud.enabled) {
+            uploadSuccess = await uploadToNextcloud(imageBytes, filename, 'image');
+            if (uploadSuccess) {
+                lastMotionSave.set(cameraId, now);
+            }
+        }
+
+        res.json({
+            status: 'ok',
+            uploaded: uploadSuccess,
+            filename: filename
+        });
+    } catch (error) {
+        console.error(`Error uploading motion image: ${error}`);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// Upload video recording (from camera client)
+app.post('/api/camera/video', async (req, res) => {
+    try {
+        const cameraId = req.headers['x-camera-id'] || 'camera1';
+        const videoBytes = req.body;
+
+        if (!videoBytes || videoBytes.length === 0) {
+            return res.status(400).json({ status: 'error', message: 'Empty video' });
+        }
+
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '_');
+        const filename = `recording_${timestamp}.mp4`;
+
+        // Upload to Nextcloud
+        let uploadSuccess = false;
+        if (integrationsConfig.nextcloud.enabled) {
+            uploadSuccess = await uploadToNextcloud(videoBytes, filename, 'video');
+        }
+
+        res.json({
+            status: 'ok',
+            uploaded: uploadSuccess,
+            filename: filename,
+            size: videoBytes.length
+        });
+    } catch (error) {
+        console.error(`Error uploading video: ${error}`);
+        res.status(500).json({ status: 'error', message: error.message });
     }
 });
 

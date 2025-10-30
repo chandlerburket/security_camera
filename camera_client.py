@@ -12,7 +12,6 @@ import sys
 import logging
 import subprocess
 import requests
-from requests.auth import HTTPBasicAuth
 
 # Try importing required packages
 try:
@@ -44,23 +43,6 @@ class CameraClient:
         self.previous_frame = None
         self.motion_threshold = 2000
         self.last_motion_time = 0
-        self.last_save_time = 0
-
-        # Nextcloud configuration
-        self.nextcloud_enabled = False
-        self.nextcloud_url = "http://192.168.1.100"
-        self.nextcloud_username = "camera_user"
-        self.nextcloud_password = "your_password"
-        self.nextcloud_folder = "/motion_captures"
-        self.nextcloud_video_folder = "/recordings"
-        self.save_interval = 10
-
-        # Pushover configuration
-        self.pushover_enabled = False
-        self.pushover_user_key = "your_pushover_user_key"
-        self.pushover_api_token = "your_pushover_api_token"
-        self.pushover_notify_interval = 120
-        self.last_pushover_time = 0
 
         # Video recording variables
         self.recording = False
@@ -74,23 +56,6 @@ class CameraClient:
         self.status_update_interval = 5  # seconds
         self.last_status_update = 0
 
-    def configure_nextcloud(self, url, username, password, folder="/motion_captures", video_folder="/recordings", enabled=True):
-        """Configure Nextcloud settings"""
-        self.nextcloud_url = url.rstrip('/')
-        self.nextcloud_username = username
-        self.nextcloud_password = password
-        self.nextcloud_folder = folder if folder.startswith('/') else f'/{folder}'
-        self.nextcloud_video_folder = video_folder if video_folder.startswith('/') else f'/{video_folder}'
-        self.nextcloud_enabled = enabled
-        logger.info(f"🔧 Nextcloud configured: {url}")
-
-    def configure_pushover(self, user_key, api_token, enabled=True, notify_interval=60):
-        """Configure Pushover settings"""
-        self.pushover_user_key = user_key
-        self.pushover_api_token = api_token
-        self.pushover_enabled = enabled
-        self.pushover_notify_interval = notify_interval
-        logger.info(f"🔔 Pushover configured")
 
     def initialize_camera(self):
         """Initialize the camera"""
@@ -141,101 +106,29 @@ class CameraClient:
             logger.error(f"❌ Motion detection error: {e}")
             return False
 
-    def upload_to_nextcloud(self, data, filename, folder_type='image'):
-        """Upload to Nextcloud via WebDAV"""
-        if not self.nextcloud_enabled:
-            return False
-
+    def upload_motion_image_to_server(self, frame_bytes):
+        """Upload motion image to server (server handles Nextcloud/Pushover)"""
         try:
-            folder = self.nextcloud_video_folder if folder_type == 'video' else self.nextcloud_folder
-            content_type = 'video/mp4' if folder_type == 'video' else 'image/jpeg'
-
-            webdav_url = f"{self.nextcloud_url}/remote.php/webdav{folder}/{filename}"
-            auth = HTTPBasicAuth(self.nextcloud_username, self.nextcloud_password)
-
-            response = requests.put(
-                webdav_url,
-                data=data,
-                auth=auth,
-                headers={'Content-Type': content_type},
-                timeout=30
-            )
-
-            if response.status_code in [200, 201, 204]:
-                logger.info(f"✅ Uploaded {filename} to Nextcloud")
-                return True
-            else:
-                logger.error(f"❌ Upload failed: {response.status_code}")
-                return False
-
-        except Exception as e:
-            logger.error(f"❌ Upload error: {e}")
-            return False
-
-    def send_pushover_notification(self, message, title="Motion Detected", image_bytes=None):
-        """Send Pushover notification"""
-        if not self.pushover_enabled:
-            return False
-
-        if time.time() - self.last_pushover_time < self.pushover_notify_interval:
-            return False
-
-        try:
-            data = {
-                'token': self.pushover_api_token,
-                'user': self.pushover_user_key,
-                'message': message,
-                'title': title,
-                'priority': 0,
-                'sound': 'pushover'
-            }
-
-            files = None
-            if image_bytes:
-                files = {'attachment': ('motion_capture.jpg', image_bytes, 'image/jpeg')}
-
             response = requests.post(
-                "https://api.pushover.net/1/messages.json",
-                data=data,
-                files=files,
-                timeout=10
+                f"{self.server_url}/api/camera/motion-image",
+                data=frame_bytes,
+                headers={
+                    'Content-Type': 'image/jpeg',
+                    'X-Camera-ID': self.camera_id
+                },
+                timeout=5
             )
 
-            if response.status_code == 200 and response.json().get('status') == 1:
-                self.last_pushover_time = time.time()
-                logger.info("🔔 Pushover notification sent")
-                return True
-
-        except Exception as e:
-            logger.error(f"❌ Pushover error: {e}")
-        return False
-
-    def save_motion_image(self, frame_bytes):
-        """Save motion detected image"""
-        current_time = time.time()
-        if current_time - self.last_save_time < self.save_interval:
-            return False
-
-        try:
-            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(current_time))
-            filename = f"motion_{timestamp}.jpg"
-
-            # Send Pushover notification
-            notification_msg = f"Motion detected at {time.strftime('%Y-%m-%d %H:%M:%S')}"
-            self.send_pushover_notification(notification_msg, image_bytes=frame_bytes)
-
-            # Upload to Nextcloud
-            if self.nextcloud_enabled:
-                success = self.upload_to_nextcloud(frame_bytes, filename, 'image')
-                if success:
-                    self.last_save_time = current_time
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('status') == 'ok':
+                    logger.info(f"✅ Motion image uploaded: {result.get('filename')}")
                     return True
-            else:
-                self.last_save_time = current_time
-                return True
+                elif result.get('status') == 'skipped':
+                    return False
 
         except Exception as e:
-            logger.error(f"❌ Save image error: {e}")
+            logger.error(f"❌ Motion image upload error: {e}")
         return False
 
     def send_status_update(self):
@@ -250,18 +143,8 @@ class CameraClient:
                 'camera_id': self.camera_id,
                 'motion_detected': self.motion_detected,
                 'last_motion_time': self.last_motion_time,
-                'recording': self.recording,
-                'nextcloud_enabled': self.nextcloud_enabled,
-                'pushover_enabled': self.pushover_enabled
+                'recording': self.recording
             }
-
-            # Add Nextcloud config if enabled
-            if self.nextcloud_enabled:
-                status_data['nextcloud_config'] = {
-                    'url': self.nextcloud_url,
-                    'folder': self.nextcloud_folder,
-                    'video_folder': self.nextcloud_video_folder
-                }
 
             # Get system metrics
             try:
@@ -351,14 +234,10 @@ class CameraClient:
             if self.recording_thread and self.recording_thread.is_alive():
                 self.recording_thread.join(timeout=5)
 
-            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(self.recording_start_time))
-            filename = f"recording_{timestamp}.mp4"
-
             video_data = self._create_video_from_temp_files()
 
-            if video_data and self.nextcloud_enabled:
-                self.upload_to_nextcloud(video_data, filename, 'video')
-                logger.info(f"🎥 Recording saved: {filename}")
+            if video_data:
+                self._upload_video_to_server(video_data)
 
         except Exception as e:
             logger.error(f"❌ Recording stop failed: {e}")
@@ -367,6 +246,29 @@ class CameraClient:
                 import shutil
                 shutil.rmtree(self.recording_temp_dir, ignore_errors=True)
                 self.recording_temp_dir = None
+
+    def _upload_video_to_server(self, video_data):
+        """Upload video to server (server handles Nextcloud upload)"""
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/camera/video",
+                data=video_data,
+                headers={
+                    'Content-Type': 'video/mp4',
+                    'X-Camera-ID': self.camera_id
+                },
+                timeout=60
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('status') == 'ok':
+                    logger.info(f"✅ Video uploaded: {result.get('filename')} ({result.get('size')} bytes)")
+                    return True
+
+        except Exception as e:
+            logger.error(f"❌ Video upload error: {e}")
+        return False
 
     def _record_frames(self):
         """Background thread for recording"""
@@ -443,7 +345,7 @@ class CameraClient:
                 # Motion detection
                 motion_detected = self.detect_motion(frame_bytes)
                 if motion_detected:
-                    self.save_motion_image(frame_bytes)
+                    self.upload_motion_image_to_server(frame_bytes)
 
                 # Send frame to server
                 try:
@@ -501,35 +403,6 @@ def main():
         camera_id = "camera1"
 
     client = CameraClient(server_url, camera_id)
-
-    # Load Nextcloud config
-    try:
-        from nextcloud_config import NEXTCLOUD_CONFIG
-        client.configure_nextcloud(
-            url=NEXTCLOUD_CONFIG["url"],
-            username=NEXTCLOUD_CONFIG["username"],
-            password=NEXTCLOUD_CONFIG["password"],
-            folder=NEXTCLOUD_CONFIG["folder"],
-            video_folder=NEXTCLOUD_CONFIG.get("video_folder", "/recordings"),
-            enabled=NEXTCLOUD_CONFIG["enabled"]
-        )
-        client.save_interval = NEXTCLOUD_CONFIG.get("save_interval", 10)
-        print("✅ Nextcloud configured")
-    except ImportError:
-        print("⚠️  No Nextcloud config found")
-
-    # Load Pushover config
-    try:
-        from pushover_config import PUSHOVER_CONFIG
-        client.configure_pushover(
-            user_key=PUSHOVER_CONFIG["user_key"],
-            api_token=PUSHOVER_CONFIG["api_token"],
-            enabled=PUSHOVER_CONFIG["enabled"],
-            notify_interval=PUSHOVER_CONFIG.get("notify_interval", 120)
-        )
-        print("✅ Pushover configured")
-    except ImportError:
-        print("⚠️  No Pushover config found")
 
     # Initialize camera
     if not client.initialize_camera():
