@@ -217,7 +217,7 @@ async function sendPushoverNotification(message, title = 'Motion Detected', imag
 
 // Play alarm sound function
 function playAlarmSound() {
-    const alarmFile = process.env.ALARM_SOUND_FILE || './alarm.mp3';
+    const alarmFile = process.env.ALARM_SOUND_FILE || './alarm.wav';
 
     // Try different audio players based on OS
     const commands = [
