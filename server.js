@@ -250,7 +250,7 @@ function checkDoorAlarm(newDoorState) {
 
     // Check if door just opened (transition from closed to open)
     if (lastDoorState === 'closed' && newDoorState === 'open') {
-        console.log('🚨 ALARM: Door opened while alarm was active!');
+        console.log('ALARM: Door opened while alarm was active!');
         playAlarmSound();
 
         // Broadcast alarm event to connected clients
@@ -471,7 +471,7 @@ app.post('/toggle-alarm', (req, res) => {
         lastDoorState = doorSensorData.door_state;
     }
 
-    console.log(`🚨 Door alarm ${doorAlarmEnabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`Door alarm ${doorAlarmEnabled ? 'ENABLED' : 'DISABLED'}`);
 
     // Broadcast alarm state to all clients
     io.emit('alarm-status', {
