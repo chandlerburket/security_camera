@@ -11,6 +11,7 @@ const socketIo = require('socket.io');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const FormData = require('form-data');
+const { exec } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
@@ -58,6 +59,10 @@ const doorSensorData = {
     device: null,
     last_updated: null
 };
+
+// Door alarm state
+let doorAlarmEnabled = false;
+let lastDoorState = null;
 
 // Recording command queue
 const recordingCommands = new Map();
@@ -208,6 +213,54 @@ async function sendPushoverNotification(message, title = 'Motion Detected', imag
         console.error(`❌ Pushover error: ${error.message}`);
     }
     return false;
+}
+
+// Play alarm sound function
+function playAlarmSound() {
+    const alarmFile = process.env.ALARM_SOUND_FILE || './alarm.wav';
+
+    // Try different audio players based on OS
+    const commands = [
+        `aplay "${alarmFile}"`,      // Linux ALSA
+        `mpg123 "${alarmFile}"`,     // Linux mpg123
+        `afplay "${alarmFile}"`,     // macOS
+        `ffplay -nodisp -autoexit "${alarmFile}"` // ffmpeg (cross-platform)
+    ];
+
+    // Try the first available command
+    const command = commands[0]; // Default to aplay for Linux
+
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`⚠️  Alarm sound playback error: ${error.message}`);
+            console.log(`💡 Make sure you have an audio file at: ${alarmFile}`);
+            console.log(`💡 Install audio player: sudo apt-get install alsa-utils mpg123`);
+        } else {
+            console.log('🔊 Alarm sound played');
+        }
+    });
+}
+
+// Monitor door state for alarm
+function checkDoorAlarm(newDoorState) {
+    if (!doorAlarmEnabled) {
+        lastDoorState = newDoorState;
+        return;
+    }
+
+    // Check if door just opened (transition from closed to open)
+    if (lastDoorState === 'closed' && newDoorState === 'open') {
+        console.log('ALARM: Door opened while alarm was active!');
+        playAlarmSound();
+
+        // Broadcast alarm event to connected clients
+        io.emit('door-alarm', {
+            timestamp: Date.now(),
+            message: 'Door opened while alarm was active'
+        });
+    }
+
+    lastDoorState = newDoorState;
 }
 
 // API Endpoints for camera client
@@ -388,6 +441,7 @@ app.get('/status', (req, res) => {
         nextcloud_enabled: integrationsConfig.nextcloud.enabled,
         nextcloud_config: nextcloudConfig,
         pushover_enabled: integrationsConfig.pushover.enabled,
+        alarm_enabled: doorAlarmEnabled,
         last_update: camera.lastStatusUpdate
     });
 });
@@ -408,6 +462,30 @@ app.post('/stop-recording', (req, res) => {
     res.json({ status: 'success', message: 'Recording stop command sent' });
 });
 
+// Toggle door alarm
+app.post('/toggle-alarm', (req, res) => {
+    doorAlarmEnabled = !doorAlarmEnabled;
+
+    // Initialize lastDoorState if this is first activation
+    if (doorAlarmEnabled && lastDoorState === null) {
+        lastDoorState = doorSensorData.door_state;
+    }
+
+    console.log(`Door alarm ${doorAlarmEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+    // Broadcast alarm state to all clients
+    io.emit('alarm-status', {
+        enabled: doorAlarmEnabled,
+        timestamp: Date.now()
+    });
+
+    res.json({
+        status: 'success',
+        alarm_enabled: doorAlarmEnabled,
+        message: `Door alarm ${doorAlarmEnabled ? 'enabled' : 'disabled'}`
+    });
+});
+
 // Door sensor webhook
 app.post('/webhook', (req, res) => {
     try {
@@ -416,6 +494,9 @@ app.post('/webhook', (req, res) => {
         doorSensorData.timestamp = data.timestamp;
         doorSensorData.device = data.device;
         doorSensorData.last_updated = Date.now();
+
+        // Check door alarm
+        checkDoorAlarm(data.door_state);
 
         // Broadcast to web clients
         io.emit('door-status', doorSensorData);
