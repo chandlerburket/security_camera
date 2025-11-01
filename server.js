@@ -622,6 +622,9 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`   - Network: http://[server-ip]:${PORT}`);
     console.log('\n🔍 Debug endpoints:');
     console.log(`   - Camera status: http://localhost:${PORT}/debug/cameras`);
+    console.log('\n🔐 Login Credentials:');
+    console.log(`   - Username: ${process.env.CAMERA_USERNAME || 'admin (default)'}`);
+    console.log(`   - Password: ${process.env.CAMERA_PASSWORD ? '***SET***' : 'admin (default)'}`);
     console.log('\n🛑 Press Ctrl+C to stop\n');
 });
 
