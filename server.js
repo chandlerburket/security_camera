@@ -578,13 +578,18 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// Serve login page
+// Serve login page as default
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/login.html');
+});
+
+// Serve login page (alternate route for compatibility)
 app.get('/login', (req, res) => {
     res.sendFile(__dirname + '/login.html');
 });
 
-// Serve main page
-app.get('/', (req, res) => {
+// Serve camera interface page
+app.get('/camera', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
