@@ -5,6 +5,14 @@
  * Receives video stream from camera client(s) and broadcasts to web clients
  */
 
+// Load environment variables from .env file (if dotenv is installed)
+try {
+    require('dotenv').config();
+} catch (err) {
+    // dotenv not installed - will use environment variables from shell
+    console.log('dotenv not found - using environment variables from shell');
+}
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -595,8 +603,52 @@ app.get('/debug/cameras', (req, res) => {
     });
 });
 
-// Serve main page
+// Login endpoint
+app.post('/api/login', (req, res) => {
+    try {
+        const { username, password, remember } = req.body;
+
+        // TODO: Replace with your actual authentication logic
+        // This is a basic example - you should use proper password hashing
+        const validUsername = process.env.CAMERA_USERNAME || 'admin';
+        const validPassword = process.env.CAMERA_PASSWORD || 'admin';
+
+        if (username === validUsername && password === validPassword) {
+            // In a real app, generate a proper JWT token
+            const token = Buffer.from(`${username}:${Date.now()}`).toString('base64');
+
+            res.json({
+                success: true,
+                token: token,
+                message: 'Login successful'
+            });
+        } else {
+            res.status(401).json({
+                success: false,
+                message: 'Invalid username or password'
+            });
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'An error occurred during login'
+        });
+    }
+});
+
+// Serve login page as default
 app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/login.html');
+});
+
+// Serve login page (alternate route for compatibility)
+app.get('/login', (req, res) => {
+    res.sendFile(__dirname + '/login.html');
+});
+
+// Serve camera interface page
+app.get('/camera', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
@@ -629,6 +681,9 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`   - Network: http://[server-ip]:${PORT}`);
     console.log('\n🔍 Debug endpoints:');
     console.log(`   - Camera status: http://localhost:${PORT}/debug/cameras`);
+    console.log('\n🔐 Login Credentials:');
+    console.log(`   - Username: ${process.env.CAMERA_USERNAME || 'admin (default)'}`);
+    console.log(`   - Password: ${process.env.CAMERA_PASSWORD ? '***SET***' : 'admin (default)'}`);
     console.log('\n🛑 Press Ctrl+C to stop\n');
 });
 
