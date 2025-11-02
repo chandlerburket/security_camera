@@ -51,6 +51,7 @@ const cameras = new Map();
 // Track last upload/notification times
 const lastMotionSave = new Map();
 const lastPushoverNotification = new Map();
+const lastDoorAlarmNotification = new Map();
 
 // Door sensor data
 const doorSensorData = {
@@ -215,6 +216,51 @@ async function sendPushoverNotification(message, title = 'Motion Detected', imag
     return false;
 }
 
+// Send door alarm Pushover notification
+async function sendDoorAlarmNotification() {
+    if (!integrationsConfig.pushover.enabled) {
+        return false;
+    }
+
+    const now = Date.now();
+    const lastNotificationTime = lastDoorAlarmNotification.get('door_alarm') || 0;
+
+    // Check notification interval (use same interval as motion detection)
+    if ((now - lastNotificationTime) / 1000 < integrationsConfig.pushover.notifyInterval) {
+        console.log('⏭️  Skipping door alarm notification (too soon after last one)');
+        return false;
+    }
+
+    try {
+        const config = integrationsConfig.pushover;
+        const formData = new FormData();
+
+        const timestamp = new Date().toLocaleString();
+        const message = `🚨 DOOR ALARM TRIGGERED!\n\nThe door was opened while the alarm was active.\n\nTime: ${timestamp}`;
+
+        formData.append('token', config.apiToken);
+        formData.append('user', config.userKey);
+        formData.append('message', message);
+        formData.append('title', '🚨 Door Alarm Alert');
+        formData.append('priority', config.priority || 1); // Higher priority for alarms
+        formData.append('sound', config.sound || 'siren'); // Use siren sound for alarm
+
+        const response = await axios.post('https://api.pushover.net/1/messages.json', formData, {
+            headers: formData.getHeaders(),
+            timeout: 10000
+        });
+
+        if (response.status === 200 && response.data.status === 1) {
+            lastDoorAlarmNotification.set('door_alarm', now);
+            console.log('🔔 Door alarm Pushover notification sent');
+            return true;
+        }
+    } catch (error) {
+        console.error(`❌ Door alarm Pushover error: ${error.message}`);
+    }
+    return false;
+}
+
 // Play alarm sound function
 function playAlarmSound() {
     const alarmFile = process.env.ALARM_SOUND_FILE || './alarm.wav';
@@ -242,7 +288,7 @@ function playAlarmSound() {
 }
 
 // Monitor door state for alarm
-function checkDoorAlarm(newDoorState) {
+async function checkDoorAlarm(newDoorState) {
     if (!doorAlarmEnabled) {
         lastDoorState = newDoorState;
         return;
@@ -250,8 +296,11 @@ function checkDoorAlarm(newDoorState) {
 
     // Check if door just opened (transition from closed to open)
     if (lastDoorState === 'closed' && newDoorState === 'open') {
-        console.log('ALARM: Door opened while alarm was active!');
+        console.log('🚨 ALARM: Door opened while alarm was active!');
         playAlarmSound();
+
+        // Send Pushover notification
+        await sendDoorAlarmNotification();
 
         // Broadcast alarm event to connected clients
         io.emit('door-alarm', {
@@ -495,8 +544,10 @@ app.post('/webhook', (req, res) => {
         doorSensorData.device = data.device;
         doorSensorData.last_updated = Date.now();
 
-        // Check door alarm
-        checkDoorAlarm(data.door_state);
+        // Check door alarm (async - runs in background)
+        checkDoorAlarm(data.door_state).catch(err => {
+            console.error('Error in checkDoorAlarm:', err);
+        });
 
         // Broadcast to web clients
         io.emit('door-status', doorSensorData);

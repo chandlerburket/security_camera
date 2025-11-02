@@ -7,6 +7,7 @@ A door alarm system has been added to the security camera server that plays an a
 - Toggle button in the web interface to enable/disable the door alarm
 - Visual indicator showing when alarm is active
 - Plays audio file on the server when door opens while alarm is enabled
+- **Pushover notifications sent to your phone when alarm is triggered**
 - Real-time synchronization across all connected clients via Socket.io
 - Flashing visual alarm when triggered
 
@@ -16,6 +17,7 @@ A door alarm system has been added to the security camera server that plays an a
 2. **Armed State**: The alarm is now active and monitoring door status
 3. **Detection**: When the door transitions from "closed" to "open" while alarm is active:
    - Server plays an audio file locally
+   - Pushover notification is sent to your phone (if configured)
    - All connected web clients receive an alarm event
    - Visual alarm status flashes red
    - Console logs the alarm event
@@ -48,6 +50,44 @@ export ALARM_SOUND_FILE="/path/to/your/alarm.mp3"
 ```
 
 Default: `./alarm.mp3` in the project root
+
+### Pushover Notifications
+
+The door alarm can send push notifications to your phone via Pushover when triggered.
+
+**Configuration:**
+
+1. Configure Pushover in `server_integrations_config.local.js`:
+   ```javascript
+   pushover: {
+       enabled: true,
+       apiToken: 'YOUR_PUSHOVER_API_TOKEN',
+       userKey: 'YOUR_PUSHOVER_USER_KEY',
+       notifyInterval: 60,  // Minimum seconds between notifications
+       priority: 1,         // Priority level (1 = high priority for alarms)
+       sound: 'siren'       // Notification sound (siren for alarms)
+   }
+   ```
+
+2. Get Pushover credentials:
+   - Sign up at https://pushover.net/
+   - Create an application to get your API token
+   - Find your user key in your account settings
+
+**Features:**
+- Sends notification with alarm details and timestamp
+- Uses high priority and siren sound by default
+- Respects notification interval to prevent spam
+- Separate tracking from motion detection notifications
+
+**Notification Message:**
+```
+🚨 DOOR ALARM TRIGGERED!
+
+The door was opened while the alarm was active.
+
+Time: [timestamp]
+```
 
 ## Web Interface
 
@@ -185,7 +225,7 @@ Potential improvements:
 - Alarm history/log
 - Configurable alarm sensitivity
 - Snooze functionality
-- Integration with Pushover for mobile notifications
+- Attach camera snapshot to Pushover notification
 
 ## Troubleshooting
 
@@ -224,3 +264,34 @@ Potential improvements:
 1. Check door sensor is sending correct state values ("open"/"closed")
 2. Verify `lastDoorState` is being tracked correctly
 3. Check server logs for door state transitions
+
+### Pushover notifications not working
+
+1. Verify Pushover is enabled in config:
+   ```javascript
+   pushover: { enabled: true, ... }
+   ```
+
+2. Check API credentials are correct:
+   - API Token from your Pushover application
+   - User Key from your Pushover account
+
+3. Check server logs for Pushover errors:
+   ```
+   🔔 Door alarm Pushover notification sent  (success)
+   ❌ Door alarm Pushover error: ...  (failure)
+   ```
+
+4. Verify notification interval hasn't blocked the notification:
+   ```
+   ⏭️  Skipping door alarm notification (too soon after last one)
+   ```
+
+5. Test Pushover manually:
+   ```bash
+   curl -s \
+     --form-string "token=YOUR_API_TOKEN" \
+     --form-string "user=YOUR_USER_KEY" \
+     --form-string "message=Test message" \
+     https://api.pushover.net/1/messages.json
+   ```
