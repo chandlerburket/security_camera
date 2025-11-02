@@ -5,8 +5,13 @@
  * Receives video stream from camera client(s) and broadcasts to web clients
  */
 
-// Load environment variables from .env file
-require('dotenv').config();
+// Load environment variables from .env file (if dotenv is installed)
+try {
+    require('dotenv').config();
+} catch (err) {
+    // dotenv not installed - will use environment variables from shell
+    console.log('dotenv not found - using environment variables from shell');
+}
 
 const express = require('express');
 const http = require('http');
