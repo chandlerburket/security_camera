@@ -5,6 +5,9 @@
  * Receives video stream from camera client(s) and broadcasts to web clients
  */
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
