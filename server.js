@@ -235,7 +235,7 @@ async function sendDoorAlarmNotification() {
         const config = integrationsConfig.pushover;
         const formData = new FormData();
 
-        const timestamp = new Date().toLocaleString();
+        const timestamp = new Date().toLocaleString('en-US', { hour12: true });
         const message = `🚨 DOOR ALARM TRIGGERED!\n\nThe door was opened while the alarm was active.\n\nTime: ${timestamp}`;
 
         formData.append('token', config.apiToken);
@@ -396,7 +396,7 @@ app.post('/api/camera/motion-image', async (req, res) => {
         const filename = `motion_${timestamp}.jpg`;
 
         // Send Pushover notification
-        const notificationMsg = `Motion detected at ${new Date().toLocaleString()}`;
+        const notificationMsg = `Motion detected at ${new Date().toLocaleString('en-US', { hour12: true })}`;
         await sendPushoverNotification(notificationMsg, 'Motion Detected', imageBytes, cameraId);
 
         // Upload to Nextcloud
