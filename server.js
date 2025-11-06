@@ -12,6 +12,7 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const FormData = require('form-data');
 const { exec } = require('child_process');
+const SuricataMonitor = require('./suricata_monitor');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,7 +31,8 @@ app.use(bodyParser.raw({ type: 'video/mp4', limit: '50mb' }));
 // Load integrations configuration
 let integrationsConfig = {
     nextcloud: { enabled: false },
-    pushover: { enabled: false }
+    pushover: { enabled: false },
+    suricata: { enabled: false }
 };
 
 try {
@@ -67,6 +69,13 @@ let lastDoorState = null;
 
 // Recording command queue
 const recordingCommands = new Map();
+
+// Initialize Suricata Monitor
+let suricataMonitor = null;
+if (integrationsConfig.suricata && integrationsConfig.suricata.enabled) {
+    suricataMonitor = new SuricataMonitor(integrationsConfig.suricata);
+    console.log('🔍 Suricata monitoring initialized');
+}
 
 // Camera Data Class
 class CameraData {
@@ -257,6 +266,52 @@ async function sendDoorAlarmNotification() {
         }
     } catch (error) {
         console.error(`❌ Door alarm Pushover error: ${error.message}`);
+    }
+    return false;
+}
+
+// Send Suricata alert Pushover notification
+async function sendSuricataAlertNotification(alert) {
+    if (!integrationsConfig.pushover.enabled) {
+        return false;
+    }
+
+    const alertKey = `suricata_${alert.signature_id}`;
+    const now = Date.now();
+    const lastNotificationTime = lastPushoverNotification.get(alertKey) || 0;
+
+    // Check notification interval
+    if ((now - lastNotificationTime) / 1000 < integrationsConfig.pushover.notifyInterval) {
+        return false;
+    }
+
+    try {
+        const config = integrationsConfig.pushover;
+        const formData = new FormData();
+
+        const severityText = alert.severity === 1 ? 'HIGH' : alert.severity === 2 ? 'MEDIUM' : 'LOW';
+        const timestamp = new Date(alert.timestamp).toLocaleString('en-US', { hour12: true });
+        const message = `🔒 ${severityText} SEVERITY\n\n${alert.signature}\n\nCategory: ${alert.category}\nSource: ${alert.src_ip}:${alert.src_port || 'N/A'}\nDest: ${alert.dest_ip}:${alert.dest_port || 'N/A'}\nProtocol: ${alert.proto}\n\nTime: ${timestamp}`;
+
+        formData.append('token', config.apiToken);
+        formData.append('user', config.userKey);
+        formData.append('message', message);
+        formData.append('title', '🚨 Suricata Security Alert');
+        formData.append('priority', alert.severity === 1 ? 1 : 0); // High priority for severity 1
+        formData.append('sound', alert.severity === 1 ? 'siren' : 'pushover');
+
+        const response = await axios.post('https://api.pushover.net/1/messages.json', formData, {
+            headers: formData.getHeaders(),
+            timeout: 10000
+        });
+
+        if (response.status === 200 && response.data.status === 1) {
+            lastPushoverNotification.set(alertKey, now);
+            console.log(`🔔 Suricata alert Pushover notification sent for: ${alert.signature}`);
+            return true;
+        }
+    } catch (error) {
+        console.error(`❌ Suricata Pushover error: ${error.message}`);
     }
     return false;
 }
@@ -595,6 +650,74 @@ app.get('/debug/cameras', (req, res) => {
     });
 });
 
+// Suricata monitoring endpoints
+app.get('/suricata/summary', (req, res) => {
+    if (!suricataMonitor) {
+        return res.json({
+            enabled: false,
+            message: 'Suricata monitoring not enabled'
+        });
+    }
+
+    res.json(suricataMonitor.getSummary());
+});
+
+app.get('/suricata/alerts', (req, res) => {
+    if (!suricataMonitor) {
+        return res.json({
+            enabled: false,
+            alerts: []
+        });
+    }
+
+    const { limit, severity, category, since } = req.query;
+    const options = {
+        limit: limit ? parseInt(limit) : 20,
+        severity: severity ? parseInt(severity) : null,
+        category: category || null,
+        since: since || null
+    };
+
+    res.json({
+        enabled: true,
+        alerts: suricataMonitor.getAlerts(options)
+    });
+});
+
+app.get('/suricata/events', (req, res) => {
+    if (!suricataMonitor) {
+        return res.json({
+            enabled: false,
+            events: []
+        });
+    }
+
+    const { limit, event_type } = req.query;
+    const options = {
+        limit: limit ? parseInt(limit) : 20,
+        event_type: event_type || null
+    };
+
+    res.json({
+        enabled: true,
+        events: suricataMonitor.getEvents(options)
+    });
+});
+
+app.get('/suricata/stats', (req, res) => {
+    if (!suricataMonitor) {
+        return res.json({
+            enabled: false,
+            stats: {}
+        });
+    }
+
+    res.json({
+        enabled: true,
+        stats: suricataMonitor.getStats()
+    });
+});
+
 // Serve main page
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
@@ -629,12 +752,38 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`   - Network: http://[server-ip]:${PORT}`);
     console.log('\n🔍 Debug endpoints:');
     console.log(`   - Camera status: http://localhost:${PORT}/debug/cameras`);
+    console.log(`   - Suricata summary: http://localhost:${PORT}/suricata/summary`);
     console.log('\n🛑 Press Ctrl+C to stop\n');
+
+    // Start Suricata monitoring with Socket.io event emitter
+    if (suricataMonitor) {
+        const started = suricataMonitor.start(io);
+        if (started) {
+            // Listen for Suricata alerts and broadcast to all clients
+            io.on('suricata-alert', (alert) => {
+                console.log(`🚨 Suricata Alert: ${alert.signature} (${alert.src_ip} → ${alert.dest_ip})`);
+                io.emit('suricata-alert', alert);
+
+                // Send Pushover notification for high-severity alerts if enabled
+                if (integrationsConfig.suricata.alertNotifications &&
+                    integrationsConfig.pushover.enabled &&
+                    alert.severity <= integrationsConfig.suricata.notifyOnSeverity) {
+                    sendSuricataAlertNotification(alert);
+                }
+            });
+        }
+    }
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
     console.log('\n🛑 Shutting down server...');
+
+    // Stop Suricata monitoring
+    if (suricataMonitor) {
+        suricataMonitor.stop();
+    }
+
     server.close(() => {
         console.log('✅ Web server stopped');
         process.exit(0);

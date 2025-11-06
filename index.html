@@ -200,6 +200,87 @@
                 border-color: #ff0000;
             }
         }
+        .suricata-section {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: rgba(13, 110, 253, 0.05);
+            border: 1px solid rgba(13, 110, 253, 0.2);
+            border-radius: 5px;
+        }
+        .suricata-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .suricata-stat {
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            text-align: center;
+        }
+        .suricata-stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #17a2b8;
+        }
+        .suricata-stat-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        .suricata-alerts {
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .suricata-alert {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 4px solid;
+            background-color: rgba(0, 0, 0, 0.3);
+            font-size: 13px;
+        }
+        .alert-severity-1 {
+            border-left-color: #dc3545;
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+        .alert-severity-2 {
+            border-left-color: #ffc107;
+            background-color: rgba(255, 193, 7, 0.1);
+        }
+        .alert-severity-3 {
+            border-left-color: #17a2b8;
+            background-color: rgba(23, 162, 184, 0.1);
+        }
+        .alert-signature {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .alert-details {
+            font-size: 11px;
+            color: #999;
+        }
+        .severity-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .severity-badge-1 {
+            background-color: #dc3545;
+            color: white;
+        }
+        .severity-badge-2 {
+            background-color: #ffc107;
+            color: #000;
+        }
+        .severity-badge-3 {
+            background-color: #17a2b8;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -230,6 +311,37 @@
                 <a href="#" id="motion-captures-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Motion Captures</a><br>
                 <a href="#" id="recordings-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Video Recordings</a>
             </p>
+        </div>
+
+        <!-- Suricata Network Monitoring Section -->
+        <div id="suricata-section" class="suricata-section" style="display: none;">
+            <h3 style="color: #17a2b8; margin-top: 0;">🔒 Network Security Monitor (Suricata)</h3>
+
+            <div class="suricata-summary">
+                <div class="suricata-stat">
+                    <div class="suricata-stat-value" id="suricata-alerts-hour">-</div>
+                    <div class="suricata-stat-label">Alerts (1hr)</div>
+                </div>
+                <div class="suricata-stat">
+                    <div class="suricata-stat-value" id="suricata-alerts-24h">-</div>
+                    <div class="suricata-stat-label">Alerts (24hr)</div>
+                </div>
+                <div class="suricata-stat">
+                    <div class="suricata-stat-value" id="suricata-high-severity">-</div>
+                    <div class="suricata-stat-label">High Severity</div>
+                </div>
+                <div class="suricata-stat">
+                    <div class="suricata-stat-value" id="suricata-total-alerts">-</div>
+                    <div class="suricata-stat-label">Total Alerts</div>
+                </div>
+            </div>
+
+            <div>
+                <h4 style="color: #ddd; margin-bottom: 10px;">Recent Security Alerts</h4>
+                <div id="suricata-alerts" class="suricata-alerts">
+                    <p style="color: #999; text-align: center;">Loading alerts...</p>
+                </div>
+            </div>
         </div>
 
         <!-- Recording Controls -->
@@ -447,11 +559,98 @@
             }
         }
 
+        // Suricata monitoring functions
+        async function updateSuricataData() {
+            try {
+                // Fetch summary data
+                const summaryResponse = await fetch('/suricata/summary');
+                const summaryData = await summaryResponse.json();
+
+                if (!summaryData.enabled || !summaryData.monitoring_active) {
+                    document.getElementById('suricata-section').style.display = 'none';
+                    return;
+                }
+
+                // Show Suricata section
+                document.getElementById('suricata-section').style.display = 'block';
+
+                // Update summary statistics
+                document.getElementById('suricata-alerts-hour').textContent = summaryData.alerts_last_hour || 0;
+                document.getElementById('suricata-alerts-24h').textContent = summaryData.alerts_last_24h || 0;
+                document.getElementById('suricata-high-severity').textContent = summaryData.high_severity_alerts || 0;
+                document.getElementById('suricata-total-alerts').textContent = summaryData.total_alerts || 0;
+
+                // Fetch recent alerts
+                const alertsResponse = await fetch('/suricata/alerts?limit=10');
+                const alertsData = await alertsResponse.json();
+
+                if (alertsData.enabled && alertsData.alerts) {
+                    displaySuricataAlerts(alertsData.alerts);
+                }
+            } catch (error) {
+                console.error('Error fetching Suricata data:', error);
+            }
+        }
+
+        function displaySuricataAlerts(alerts) {
+            const alertsContainer = document.getElementById('suricata-alerts');
+
+            if (!alerts || alerts.length === 0) {
+                alertsContainer.innerHTML = '<p style="color: #999; text-align: center;">No alerts detected</p>';
+                return;
+            }
+
+            let html = '';
+            alerts.forEach(alert => {
+                const severityText = alert.severity === 1 ? 'HIGH' : alert.severity === 2 ? 'MEDIUM' : 'LOW';
+                const timestamp = new Date(alert.timestamp).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                });
+
+                html += `
+                    <div class="suricata-alert alert-severity-${alert.severity}">
+                        <div class="alert-signature">
+                            <span class="severity-badge severity-badge-${alert.severity}">${severityText}</span>
+                            ${alert.signature}
+                        </div>
+                        <div class="alert-details">
+                            <div>${alert.category} | ${alert.proto}${alert.app_proto ? ` (${alert.app_proto})` : ''}</div>
+                            <div>${alert.src_ip}:${alert.src_port || '-'} → ${alert.dest_ip}:${alert.dest_port || '-'}</div>
+                            <div>${timestamp}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            alertsContainer.innerHTML = html;
+        }
+
+        // Listen for real-time Suricata alerts
+        socket.on('suricata-alert', (alert) => {
+            console.log('🚨 Real-time Suricata alert:', alert);
+
+            // Update summary data
+            updateSuricataData();
+
+            // Show notification for high-severity alerts
+            if (alert.severity === 1) {
+                console.log(`⚠️ HIGH SEVERITY ALERT: ${alert.signature}`);
+            }
+        });
+
         // Wait for page to load before updating status
         document.addEventListener('DOMContentLoaded', function() {
             // Update status immediately and then every 20 seconds
             updateStatus();
             setInterval(updateStatus, 20000);
+
+            // Update Suricata data immediately and then every 30 seconds
+            updateSuricataData();
+            setInterval(updateSuricataData, 30000);
         });
 
         // Function to update date and time overlay
