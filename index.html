@@ -190,6 +190,54 @@
             text-align: center;
             font-weight: bold;
         }
+        .alarm-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .volume-control input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 140px;
+            height: 4px;
+            border-radius: 2px;
+            background: #444;
+            outline: none;
+            cursor: pointer;
+        }
+        .volume-control input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #6c757d;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .volume-control input[type="range"]::-webkit-slider-thumb:hover {
+            background: #adb5bd;
+        }
+        .volume-label {
+            min-width: 38px;
+            text-align: right;
+        }
+        .test-alarm-button {
+            background-color: #495057;
+            transition: background-color 0.2s ease;
+        }
+        .test-alarm-button:hover:not(:disabled) {
+            background-color: #343a40;
+        }
         @keyframes flash {
             0%, 100% {
                 background-color: rgba(220, 53, 69, 0.1);
@@ -236,6 +284,16 @@
         <div class="recording-controls">
             <button id="record-toggle-btn" class="record-button" onclick="toggleRecording()">Start Recording</button>
             <button id="alarm-toggle-btn" class="alarm-button" onclick="toggleAlarm()">Enable Door Alarm</button>
+        </div>
+
+        <!-- Alarm Volume & Test -->
+        <div class="alarm-controls">
+            <div class="volume-control">
+                <span>Alarm Volume:</span>
+                <input type="range" id="alarm-volume-slider" min="0" max="100" value="80" oninput="onVolumeSliderInput(this.value)" onchange="setVolume(this.value)">
+                <span class="volume-label" id="alarm-volume-label">80%</span>
+            </div>
+            <button class="test-alarm-button" onclick="testAlarm()">Test Alarm Sound</button>
         </div>
     </div>
 
@@ -679,6 +737,53 @@
                 motionLink.textContent = 'Motion Captures (Nextcloud disabled)';
                 recordingsLink.textContent = 'Video Recordings (Nextcloud disabled)';
             }
+        }
+
+        // Load alarm volume on startup
+        fetch('/alarm-volume')
+            .then(res => res.json())
+            .then(data => {
+                const slider = document.getElementById('alarm-volume-slider');
+                const label = document.getElementById('alarm-volume-label');
+                if (slider && data.volume !== undefined) {
+                    slider.value = data.volume;
+                    label.textContent = `${data.volume}%`;
+                }
+            })
+            .catch(() => {});
+
+        function onVolumeSliderInput(value) {
+            document.getElementById('alarm-volume-label').textContent = `${value}%`;
+        }
+
+        let volumeDebounceTimer = null;
+        function setVolume(value) {
+            clearTimeout(volumeDebounceTimer);
+            volumeDebounceTimer = setTimeout(() => {
+                fetch('/set-volume', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ volume: parseInt(value, 10) })
+                }).catch(err => console.error('Volume set error:', err));
+            }, 200);
+        }
+
+        function testAlarm() {
+            const btn = event.currentTarget;
+            btn.disabled = true;
+            btn.textContent = 'Playing...';
+            fetch('/test-alarm', { method: 'POST' })
+                .then(res => res.json())
+                .then(() => {
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.textContent = 'Test Alarm Sound';
+                    }, 2000);
+                })
+                .catch(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Test Alarm Sound';
+                });
         }
 
         // Update datetime immediately and then every second
