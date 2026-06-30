@@ -64,6 +64,7 @@ const doorSensorData = {
 // Door alarm state
 let doorAlarmEnabled = false;
 let lastDoorState = null;
+let alarmVolume = 80; // 0-100
 
 // Recording command queue
 const recordingCommands = new Map();
@@ -264,25 +265,18 @@ async function sendDoorAlarmNotification() {
 // Play alarm sound function
 function playAlarmSound() {
     const alarmFile = process.env.ALARM_SOUND_FILE || './alarm.wav';
+    const vol = Math.max(0, Math.min(100, alarmVolume));
 
-    // Try different audio players based on OS
-    const commands = [
-        `aplay "${alarmFile}"`,      // Linux ALSA
-        `mpg123 "${alarmFile}"`,     // Linux mpg123
-        `afplay "${alarmFile}"`,     // macOS
-        `ffplay -nodisp -autoexit "${alarmFile}"` // ffmpeg (cross-platform)
-    ];
-
-    // Try the first available command
-    const command = commands[0]; // Default to aplay for Linux
+    // Set system volume then play; fall back to ffplay with software volume
+    const command = `amixer sset Master ${vol}% 2>/dev/null; aplay "${alarmFile}" || ffplay -nodisp -autoexit -volume ${vol} "${alarmFile}"`;
 
     exec(command, (error, stdout, stderr) => {
         if (error) {
             console.error(`⚠️  Alarm sound playback error: ${error.message}`);
             console.log(`💡 Make sure you have an audio file at: ${alarmFile}`);
-            console.log(`💡 Install audio player: sudo apt-get install alsa-utils mpg123`);
+            console.log(`💡 Install audio player: sudo apt-get install alsa-utils`);
         } else {
-            console.log('🔊 Alarm sound played');
+            console.log(`🔊 Alarm sound played at ${vol}% volume`);
         }
     });
 }
@@ -533,6 +527,29 @@ app.post('/toggle-alarm', (req, res) => {
         alarm_enabled: doorAlarmEnabled,
         message: `Door alarm ${doorAlarmEnabled ? 'enabled' : 'disabled'}`
     });
+});
+
+// Get alarm volume
+app.get('/alarm-volume', (req, res) => {
+    res.json({ volume: alarmVolume });
+});
+
+// Set alarm volume
+app.post('/set-volume', (req, res) => {
+    const { volume } = req.body;
+    if (typeof volume !== 'number' || volume < 0 || volume > 100) {
+        return res.status(400).json({ status: 'error', message: 'Volume must be 0–100' });
+    }
+    alarmVolume = Math.round(volume);
+    console.log(`🔊 Alarm volume set to ${alarmVolume}%`);
+    res.json({ status: 'success', volume: alarmVolume });
+});
+
+// Test alarm sound
+app.post('/test-alarm', (req, res) => {
+    console.log('🔊 Test alarm triggered');
+    playAlarmSound();
+    res.json({ status: 'success', message: 'Test alarm playing', volume: alarmVolume });
 });
 
 // Door sensor webhook
