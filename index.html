@@ -238,6 +238,9 @@
         .test-alarm-button:hover:not(:disabled) {
             background-color: #343a40;
         }
+        .power-online  { color: #28a745; font-weight: bold; }
+        .power-warn    { color: #ffc107; font-weight: bold; }
+        .power-offline { color: #dc3545; font-weight: bold; }
         @keyframes flash {
             0%, 100% {
                 background-color: rgba(220, 53, 69, 0.1);
@@ -273,6 +276,39 @@
             <p><strong>CPU Temperature:</strong> <span id="cpu-temp">Loading...</span></p>
             <p><strong>Uptime:</strong> <span id="uptime">Loading...</span></p>
             <p><strong>Door Status:</strong> <span id="door-status" style="font-weight: bold;">No data</span></p>
+            <p>
+                <strong>Power Bank:</strong>
+                <span id="power-status-text" style="font-weight: bold; color: #6c757d;">No data</span>
+            </p>
+            <p id="power-detail-row" style="display: none; margin-left: 20px; flex-direction: column; gap: 4px;">
+                <span style="display: flex; justify-content: space-between;">
+                    <span>Voltage</span>
+                    <span id="pwr-voltage" style="font-family: monospace;">—</span>
+                </span>
+                <span style="display: flex; justify-content: space-between;">
+                    <span>Current</span>
+                    <span id="pwr-current" style="font-family: monospace;">—</span>
+                </span>
+                <span style="display: flex; justify-content: space-between;">
+                    <span>Power</span>
+                    <span id="pwr-power" style="font-family: monospace;">—</span>
+                </span>
+                <span style="display: flex; justify-content: space-between;">
+                    <span>Capacity used</span>
+                    <span id="pwr-mah" style="font-family: monospace;">—</span>
+                </span>
+                <span style="display: flex; justify-content: space-between;">
+                    <span>Meter temp</span>
+                    <span id="pwr-temp" style="font-family: monospace;">—</span>
+                </span>
+                <!-- Voltage health bar -->
+                <span style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <span style="font-size: 0.8em; color: #6c757d;">Supply health</span>
+                    <span style="width: 55%; background: #2a2a2a; border-radius: 3px; height: 6px; overflow: hidden;">
+                    <span id="pwr-vbar" style="display: block; height: 100%; width: 0%; border-radius: 3px; transition: width 0.6s, background 0.4s; background: #28a745;"></span>
+                    </span>
+                </span>
+            </p>
             <p><strong>Nextcloud Files:</strong></p>
             <p style="margin-left: 20px;">
                 <a href="#" id="motion-captures-link" target="_blank" style="color: #17a2b8; text-decoration: none;">Motion Captures</a><br>
@@ -789,6 +825,60 @@
         // Update datetime immediately and then every second
         updateDateTime();
         setInterval(updateDateTime, 1000);
+
+        // Voltage range for Pi Zero USB supply (4.5–5.5 V nominal)
+        const PWR_V_MIN = 4.5;
+        const PWR_V_MAX = 5.5;
+
+        socket.on('power-status', (data) => {
+        updatePowerUI(data);
+        });
+
+        function updatePowerUI(data) {
+            const statusText  = document.getElementById('power-status-text');
+            const detailRow   = document.getElementById('power-detail-row');
+
+            if (!data.online) {
+                statusText.textContent = 'OFFLINE';
+                statusText.className   = 'power-offline';
+                detailRow.style.display = 'none';
+                return;
+            }
+
+            // Summary badge in the label row
+            const v = data.voltage;
+            let quality, cls;
+            if (v >= 4.9)       { quality = 'GOOD';   cls = 'power-online'; }
+            else if (v >= 4.75) { quality = 'LOW';    cls = 'power-warn';   }
+            else                { quality = 'CRITICAL'; cls = 'power-offline'; }
+
+            statusText.textContent = `${quality} — ${v.toFixed(3)} V`;
+            statusText.className   = cls;
+
+            // Detail rows
+            detailRow.style.display = 'flex';
+
+            document.getElementById('pwr-voltage').textContent =
+                `${data.voltage.toFixed(3)} V`;
+            document.getElementById('pwr-current').textContent =
+                `${data.current.toFixed(3)} A`;
+            document.getElementById('pwr-power').textContent =
+                `${data.power.toFixed(2)} W`;
+            document.getElementById('pwr-mah').textContent =
+                `${data.mah} mAh`;
+            document.getElementById('pwr-temp').textContent =
+                `${data.temp_c} °C`;
+
+            // Voltage health bar
+            const pct  = Math.min(100, Math.max(0,
+                ((v - PWR_V_MIN) / (PWR_V_MAX - PWR_V_MIN)) * 100
+            ));
+            const vbar = document.getElementById('pwr-vbar');
+            vbar.style.width      = pct + '%';
+            vbar.style.background =
+                v >= 4.9  ? '#28a745' :
+                v >= 4.75 ? '#ffc107' : '#dc3545';
+        }
     </script>
 </body>
 </html>
