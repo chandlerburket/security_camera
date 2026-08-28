@@ -24,5 +24,15 @@ module.exports = {
         notifyInterval: 120,  // Minimum seconds between notifications
         priority: 0,  // -2 to 2 (lowest to emergency)
         sound: "pushover"  // Notification sound
+    },
+
+    // Suricata Network Monitoring Configuration
+    suricata: {
+        enabled: true,  // Set to true to enable Suricata monitoring
+        eveLogPath: "/var/log/suricata/eve.json",  // Path to Suricata eve.json log file
+        maxAlerts: 100,  // Maximum number of alerts to keep in memory
+        maxEvents: 50,  // Maximum number of non-alert events to keep
+        alertNotifications: false,  // Set to true to send Pushover notifications for high-severity alerts
+        notifyOnSeverity: 1  // Only notify for alerts with this severity or higher (1=High, 2=Medium, 3=Low)
     }
 };
